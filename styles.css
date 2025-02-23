@@ -1,0 +1,159 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+body {
+    font-family: 'Poppins', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f8f9fa;
+    margin: 0;
+    flex-direction: column;
+}
+
+.login-container {
+    text-align: center;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    position: relative;
+}
+
+.logo {
+    width: 400px;
+    height: auto;
+    display: block;
+    margin: 0 auto 10px;
+}
+
+form {
+    margin-top: 20px;
+}
+
+.input-box {
+    display: flex;
+    align-items: center;
+    background: #e0e0e0;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    width: 95%;
+}
+
+.input-box i {
+    margin-right: 10px;
+    color: #555;
+    font-size: 16px;
+}
+
+.input-box input {
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+    color: #333;
+}
+
+.forgot-password {
+    text-align: right;
+    font-size: 10px;
+    margin-top: -5px; 
+    margin-bottom: 10px; 
+}
+.forgot-password a {
+    text-decoration: none; 
+    color: inherit; 
+}
+
+.forgot-password a:hover {
+    text-decoration: underline; 
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: black;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 5px;
+    font-size: 16px;
+    font-weight: 500;
+    font-family: 'Poppins', sans-serif !important; 
+    letter-spacing: 1.5px; 
+}
+
+button:hover {
+    background-color: #333;
+}
+
+.otp-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.otp-input-box {
+    display: flex;
+    align-items: center;
+    background: #e0e0e0;
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    width: 10px;
+}
+
+.otp-input-box i {
+    margin-right: 10px;
+    color: #555;
+    font-size: 16px;
+}
+
+.otp-input-box input {
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+    color: #333;
+}
+
+.verify-btn {
+    width: 100%;
+    padding: 10px;
+    background-color: black;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 5px;
+    font-size: 16px;
+    font-weight: 500;
+    font-family: 'Poppins', sans-serif !important;
+    letter-spacing: 1.5px;
+}
+
+.verify-btn:hover {
+    background-color: #333;
+}
+.error-message {
+    color: red;
+    font-size: 14px;
+    margin-top: 5px;
+    display: none;
+    text-align: center;
+}
+#forgot-password-error{
+    color: red;
+    font-size: 14px;
+    text-align: center;
+    margin-top: 30px;
+    display: none; /* Initially hidden */
+}
