@@ -32,10 +32,15 @@ document.getElementById("forgot-password-form").addEventListener("submit", async
                     <p id="otp-error" class="error-message"></p>
                     <p><a href="index.html">Back to Login</a></p>
                 `;
+
                 document.getElementById("verify-otp-btn").addEventListener("click", async function () {
                     const otp = document.getElementById("otp-input").value;
                     const otpError = document.getElementById("otp-error");
+
+                    // Clear previous error messages
                     otpError.textContent = "";
+                    otpError.style.display = "none";
+
                     try {
                         const otpResponse = await fetch("http://localhost:5000/api/auth/verify-otp", {
                             method: "POST",
@@ -48,10 +53,12 @@ document.getElementById("forgot-password-form").addEventListener("submit", async
                         if (otpResponse.ok) {
                             window.location.href = "reset-password.html";
                         } else {
-                            otpError.textContent = otpData.error;
+                            otpError.textContent = otpData.error || "Invalid or expired OTP. Please try again.";
+                            otpError.style.display = "block";
                         }
                     } catch (error) {
                         otpError.textContent = "An error occurred while verifying OTP.";
+                        otpError.style.display = "block";
                     }
                 });
 

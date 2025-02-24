@@ -55,7 +55,16 @@ app.post("/api/auth/forgot-password", async (req, res) => {
         to: email,
         subject: "Your OTP for Password Reset",
         text: `Your OTP is ${otp}. It is valid for 10 minutes.`,
-        html: `<p>Your OTP is <b>${otp}</b>. It is valid for 10 minutes.</p>`
+        html:`<div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border-radius: 10px; background-color: #ffffff; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: center;">
+            <h2 style="color: #4CAF50;">🔒 OTP Verification</h2>
+            <p style="font-size: 16px; color: #333;">Hello,</p>
+            <p style="font-size: 16px; color: #333;">Use the OTP below to reset your password. This OTP is valid for <b>10 minutes</b>.</p>
+            <div style="font-size: 24px; font-weight: bold; color: #4CAF50; padding: 10px; background: #f4f4f4; display: inline-block; border-radius: 5px;">
+                ${otp}
+            </div>
+            <p style="font-size: 14px; color: #666;">If you did not request this, please ignore this email.</p>
+            <p style="font-size: 14px; color: #666;">Regards,<br>ODCSE Support</p>
+        </div>`
     };
 
     try {

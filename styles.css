@@ -150,10 +150,3 @@ button:hover {
     display: none;
     text-align: center;
 }
-#forgot-password-error{
-    color: red;
-    font-size: 14px;
-    text-align: center;
-    margin-top: 30px;
-    display: none; /* Initially hidden */
-}
