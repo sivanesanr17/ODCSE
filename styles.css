@@ -146,7 +146,25 @@ button:hover {
 .error-message {
     color: red;
     font-size: 14px;
-    margin-top: 5px;
+    margin-top: 15px;
     display: none;
     text-align: center;
 }
+#strength-indicator {
+    display: flex;
+    margin-top: 5px;
+}
+
+#strength-indicator div {
+    height: 5px;
+    flex: 1;
+    margin: 2px;
+    border-radius: 5px;
+    background-color: lightgray;
+    transition: background-color 0.3s ease-in-out;
+}
+
+.weak div { background-color: red; }
+.medium div:nth-child(-n+2) { background-color: orange; }
+.strong div { background-color: green; }
+

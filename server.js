@@ -75,6 +75,31 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     }
 });
 
+// ✅ Reset Password (Update in Database)
+app.post("/api/auth/reset-password", async (req, res) => {
+    const { email, newPassword } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+        return res.status(400).json({ error: "User not found" });
+    }
+
+    // Validate password strength
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+        return res.status(400).json({ error: "Password must be at least 8 characters long, include uppercase, lowercase, a number, and a special character." });
+    }
+
+    // Hash and update the password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    res.json({ message: "Password reset successful!" });
+});
+
 // ✅ Verify OTP
 app.post("/api/auth/verify-otp", async (req, res) => {
     const { email, otp } = req.body;

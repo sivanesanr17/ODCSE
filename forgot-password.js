@@ -51,6 +51,7 @@ document.getElementById("forgot-password-form").addEventListener("submit", async
                         const otpData = await otpResponse.json();
 
                         if (otpResponse.ok) {
+                            localStorage.setItem("otpVerified", "true"); // Store OTP verification status
                             window.location.href = "reset-password.html";
                         } else {
                             otpError.textContent = otpData.error || "Invalid or expired OTP. Please try again.";
