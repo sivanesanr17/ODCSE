@@ -17,10 +17,11 @@ const ResetPassword = () => {
   const otpToken = localStorage.getItem("otpToken");
 
   useEffect(() => {
-    if (!userEmail || otpVerified !== "true") {
+    // 🔴 If user tries to access /reset-password without OTP verification, redirect them
+    if (!userEmail || otpVerified !== "true" || !otpToken) {
       navigate("/forgot-password");
     }
-  }, []);
+  }, [navigate, userEmail, otpVerified, otpToken]); // ✅ Dependencies added
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
@@ -45,11 +46,6 @@ const ResetPassword = () => {
       return;
     }
 
-    if (!otpToken) {
-      setError("OTP verification required. Please restart the process.");
-      return;
-    }
-
     try {
       setIsSubmitting(true);
       const response = await axios.post(
@@ -59,10 +55,8 @@ const ResetPassword = () => {
 
       if (response.data?.success) {
         setMessage("Updated! Redirecting to login...");
-        setError(""); // Clear error if any
-
-        // Wait for 2 seconds, then clear local storage and navigate
         setTimeout(() => {
+          // Clear storage and navigate after success
           localStorage.removeItem("resetEmail");
           localStorage.removeItem("otpVerified");
           localStorage.removeItem("otpToken");

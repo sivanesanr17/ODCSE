@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { FaKey, FaArrowLeft } from "react-icons/fa";
+import { FaKey } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import styles from "./verifyotp.module.css";  // ✅ Import local CSS module
+import styles from "./verifyotp.module.css";
 
 const VerifyOtpPage = () => {
   const [otp, setOtp] = useState("");
@@ -41,17 +41,17 @@ const VerifyOtpPage = () => {
 
       if (response.data?.verified) {
         localStorage.setItem("otpVerified", "true");
-        localStorage.setItem("otpToken",response.data.otpToken);
+        localStorage.setItem("otpToken", response.data.otpToken);
         localStorage.removeItem("otpSent");
 
         setTimeout(() => {
           navigate("/reset-password");
-        });
+        }, 500);
       } else {
         setOtpError(response.data.message || "Invalid OTP.");
       }
     } catch (err) {
-      setOtpError("Invalid or expired OTP. Try again");
+      setOtpError("Invalid or expired OTP. Try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -59,7 +59,6 @@ const VerifyOtpPage = () => {
 
   return (
     <div className={styles.verifyOtpContainer}>
-      
       <img src="/assets/ODCSE Logo.png" alt="Logo" className={styles.logo} />
 
       <div className={styles.verifyOtpCard}>
