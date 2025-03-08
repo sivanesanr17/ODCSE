@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { FaEnvelope, FaLock } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import "./login.css";
-//All good perumal added...
+
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,12 +17,12 @@ const Login = () => {
     setSuccess("");
 
     if (!email || !password) {
-      setError("Both fields are required!");
+      setError("⚠️ Both fields are required!");
       return;
     }
 
     if (!/\S+@\S+\.\S+/.test(email)) {
-      setError("Invalid email format!");
+      setError("⚠️ Invalid email format!");
       return;
     }
 
@@ -45,8 +44,7 @@ const Login = () => {
             navigate(`/staffdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
           }
         }, 1000);
-      }
-      else {
+      } else {
         setError("Invalid credentials!");
       }
     } catch (error) {
@@ -54,64 +52,75 @@ const Login = () => {
     }
   };
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      localStorage.clear();
-      navigate("/");
-    }, 1800000); // 30 minutes inactivity
-
-    window.addEventListener("mousemove", resetTimer);
-    window.addEventListener("keydown", resetTimer);
-
-    function resetTimer() {
-      clearTimeout(timeout);
-    }
-
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keydown", resetTimer);
-    };
-  }, []);
-
   return (
-    <div className="login-container">
-      <img src="/assets/ODCSE Logo.png" alt="Logo" className="logo" />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+      {/* Logo */}
+      <div className="mb-4 mr-4">
+        <img
+          src="/assets/ODCSE Logo.png"
+          alt="Logo"
+          className="w-45 h-32"
+        />
+      </div>
 
-      <form onSubmit={handleSubmit} className="login-form">
-        <div className="input-group">
-          <FaEnvelope className="icon" />
+      {/* Login Form */}
+      <form 
+        onSubmit={handleSubmit} 
+        className="w-96 space-y-4"
+      >
+        {/* Email Field */}
+        <div className="flex items-center bg-gray-200 rounded-md p-3">
+          <FaEnvelope className="text-gray-500 mr-2" />
           <input
             type="email"
             placeholder="College Mail ID"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-transparent outline-none text-sm"
           />
         </div>
 
-        <div className="input-group">
-          <FaLock className="icon" />
+        {/* Password Field */}
+        <div className="flex items-center bg-gray-200 rounded-md p-3">
+          <FaLock className="text-gray-500 mr-2" />
           <input
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-transparent outline-none text-sm"
           />
         </div>
 
-        <div className="forget-password">
-          <a href="#" onClick={(e) => { e.preventDefault(); navigate("/forgot-password"); }}>
+        {/* Forgot Password */}
+        <div className="relative">
+          <a
+            href="#"
+            className="absolute -top-2.5 right-0 text-[10px] text-gray-600 hover:text-blue-600 transition"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("/forgot-password");
+            }}
+          >
             Forgot Password?
           </a>
         </div>
 
-        <button type="submit" className="login-button">Login</button>
+        {/* Login Button */}
+        <button
+          type="submit"
+          className="w-full bg-black text-white py-2 rounded-md font-semibold tracking-wider hover:bg-gray-900 transition-all duration-300"
+        >
+          Login
+        </button>
 
-        <div className="message-container">
-          {error && <p className="error-message">{error}</p>}
-          {success && <p className="success-message">{success}</p>}
-        </div>
       </form>
+
+      {/* ✅ Success and Error Messages (Fixed Height to Prevent UI Shifting) */}
+      <div className="h-6 mt-4 text-center">
+        {success && <p className="text-green-500 text-sm">{success}</p>}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+      </div>
     </div>
   );
 };

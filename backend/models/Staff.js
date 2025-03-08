@@ -5,8 +5,10 @@ const StaffSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true },
-  role: { type: String, default: "staff" }
-}, { collection: "staffs" });  // Explicitly set collection name
+  role: { type: String, default: "staff" },
+  department: { type: String, required: true, trim: true },  // New field
+  staffID: { type: String, required: true, unique: true, trim: true }  // New field
+}, { collection: "staffs" });  
 
 // ✅ Automatically Hash Password Before Saving
 StaffSchema.pre("save", async function (next) {

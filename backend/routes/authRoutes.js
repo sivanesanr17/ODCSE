@@ -213,38 +213,28 @@ router.post("/login", async (req, res) => {
 
 
 // ✅ **Profile**
-router.get("/api/user/profile", async (req, res) => {
+// ✅ Get Profile Based on Role
+router.get("/user", async (req, res) => {
+    const { email } = req.query;
+  
     try {
-      const email = req.query.email;
-      console.log("🔍 Received request for email:", email);
-  
-      if (!email) {
-        console.log("❌ Missing email in request");
-        return res.status(400).json({ message: "Email is required" });
-      }
-  
-      const [user, staff] = await Promise.all([
-        User.findOne({ email }),
-        Staff.findOne({ email }),
-      ]);
-  
-      if (user) {
-        console.log("✅ Found user:", user);
-        return res.json(user);
-      }
+      const staff = await Staff.findOne({ email });
       if (staff) {
-        console.log("✅ Found staff:", staff);
         return res.json(staff);
       }
   
-      console.log("❌ User not found in database");
-      return res.status(404).json({ message: "User not found in database" });
+      const user = await User.findOne({ email });
+      if (user) {
+        return res.json(user);
+      }
+  
+      res.status(404).json({ message: "User not found" });
     } catch (error) {
-      console.error("🔥 Server error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
   
+
 
 
 module.exports = router;

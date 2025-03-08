@@ -1,12 +1,13 @@
 import React, { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FaCalendarAlt, FaUpload, FaHistory, FaRegBell, FaUserCircle } from "react-icons/fa";
-import styles from "./staffdashboard.module.css";
+import { IoPersonCircleOutline } from "react-icons/io5";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faBell } from '@fortawesome/free-regular-svg-icons';
 
 const StaffDashboard = () => {
   const { username } = useParams();
   const navigate = useNavigate();
-  
+
   useEffect(() => {
     const authToken = localStorage.getItem("authToken");
     if (!authToken) {
@@ -14,33 +15,27 @@ const StaffDashboard = () => {
     }
   }, [navigate]);
 
-  const displayName = username ? username.replace("-", " ") : "Guest";
+  const displayName = username ? username.replace("-", " ") : "Staff Name";
 
   return (
-    <div className={styles.container}>
-      <div className={styles.sidebar}>
-        <img src="/assets/ODCSE Logo.png" alt="Logo" className={styles.logo} />
-        <ul className={styles.navList}>
-          <li className={styles.smallText} onClick={() => navigate("/events")}> 
-            <FaCalendarAlt className={styles.navIcon} /> Events
-          </li>
-          <li className={styles.smallText} onClick={() => navigate("/upload-events")}> 
-            <FaUpload className={styles.navIcon} /> Upload Events
-          </li>
-          <li className={styles.smallText} onClick={() => navigate("/history")}> 
-            <FaHistory className={styles.navIcon} /> History
-          </li>
-        </ul>
+    <div className="flex items-center justify-between p-4 bg-white shadow-md">
+      {/* Logo */}
+      <div className="mr-4 flex-shrink-0">
+        <img
+          src="/assets/ODCSE Logo.png"
+          alt="Logo"
+          className="w-21 h-11"
+        />
       </div>
-
-      <div className={styles.mainContent}>
-        <div className={styles.header}>
-          <div className={styles.iconContainer}>
-            <FaRegBell className={styles.bellIcon} onClick={() => navigate("/notifications")} />
-            <FaUserCircle className={styles.userIcon} onClick={() => navigate("/profile")} />
-          </div>
+      <div className="flex items-center space-x-4">
+        <div className="relative cursor-pointer" onClick={() => navigate("/notifications")}>
+          <FontAwesomeIcon icon={faBell} className="text-xl text-black" />
+          <span className="absolute top-0 right-0 bg-red-500 w-2 h-2 rounded-full"></span>
         </div>
-        <h1 className={styles.title}>Welcome, {displayName}!</h1>
+        <IoPersonCircleOutline
+          className="text-3xl text-black cursor-pointer"
+          onClick={() => navigate("/profile")}
+        />
       </div>
     </div>
   );

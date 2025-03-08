@@ -11,15 +11,34 @@ mongoose.connect("mongodb://127.0.0.1:27017/odcse", {
 
 // Staff Schema
 const StaffSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    staffID: { type: String, required: true, unique: true },
-    department: { type: String, required: true },
-    designation: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
+    role: { type: String, default: "staff" },
+    department: { type: String, required: true, trim: true },
+    staffID: { type: String, required: true, unique: true, trim: true }
+}, { collection: "staffs" });
+
+// ✅ Automatically Hash Password Before Saving
+StaffSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
+    }
 });
 
-const Staff = mongoose.model("staffs", StaffSchema);
+// ✅ Compare Password for Login
+StaffSchema.methods.comparePassword = async function (enteredPassword) {
+    return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Staff Model
+const Staff = mongoose.model("Staff", StaffSchema);
 
 // Function to Add Staff
 async function addStaff(staffData) {
@@ -28,7 +47,6 @@ async function addStaff(staffData) {
         const existingStaff = await Staff.findOne({ email: staffData.email });
         if (existingStaff) {
             console.log("❌ Staff already exists!");
-            mongoose.connection.close();
             return;
         }
 
@@ -50,11 +68,10 @@ async function addStaff(staffData) {
 // Example Staff Data
 const staff = {
     name: "Sivanesan",
-    staffID: "22CS201",
-    department: "Computer Science",
-    designation: "Associate Professor",
     email: "cnpnesan@gmail.com",
-    password: "securepassword",  // Plaintext password, will be hashed
+    password: "Cnpnesan@17", // Must follow password policy
+    department: "Computer Science",
+    staffID: "22CS201",
 };
 
 // Call Function

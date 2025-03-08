@@ -1,65 +1,87 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 const Profile = () => {
   const [userDetails, setUserDetails] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const navigate = useNavigate();
-  const location = useLocation();
-  const email = new URLSearchParams(location.search).get("email");
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        console.log("Fetching profile for email:", email); // Debugging
-        const response = await axios.get(`http://localhost:5000/api/user/profile?email=${email}`);
-        console.log("API Response:", response.data); // Debugging
+    const fetchUserDetails = async () => {
+      const authToken = localStorage.getItem("authToken");
+      const userEmail = localStorage.getItem("userEmail");
 
-        if (response.data) {
-          setUserDetails(response.data);
-        } else {
-          setError("User not found");
-        }
+      if (!authToken || !userEmail) {
+        navigate("/");
+        return;
+      }
+
+      try {
+        const response = await axios.get("http://localhost:5000/api/auth/user", {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+          params: {
+            email: userEmail,
+          },
+        });
+
+        setUserDetails(response.data);
       } catch (error) {
-        console.error("Error fetching profile:", error); // Debugging
-        setError("Failed to fetch profile details");
-      } finally {
-        setLoading(false);
+        console.error("Failed to fetch user details:", error);
+        navigate("/");
       }
     };
 
-    if (email) {
-      fetchProfile();
-    } else {
-      setError("Email is required");
-      setLoading(false);
-    }
-  }, [email]);
+    fetchUserDetails();
+  }, [navigate]);
 
-  if (loading) {
+  if (!userDetails) {
     return <div>Loading...</div>;
   }
 
-  if (error) {
-    return <div className="error-message">{error}</div>;
-  }
-
   return (
-    <div className="profile-container">
-      <h1>Profile Details</h1>
-      {userDetails && (
-        <div className="profile-details">
-          <p><strong>Name:</strong> {userDetails.name}</p>
-          {userDetails.registerNumber && <p><strong>Register Number:</strong> {userDetails.registerNumber}</p>}
-          {userDetails.semester && <p><strong>Semester:</strong> {userDetails.semester}</p>}
-          {userDetails.tutorName && <p><strong>Tutor Name:</strong> {userDetails.tutorName}</p>}
-          {userDetails.role === "staff" && <p><strong>Designation:</strong> {userDetails.designation}</p>}
-          <p><strong>Email:</strong> {userDetails.email}</p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-lg w-96">
+        <h1 className="text-2xl font-bold mb-4">Profile</h1>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Name</label>
+            <p className="mt-1 text-sm text-gray-900">{userDetails.name}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Email</label>
+            <p className="mt-1 text-sm text-gray-900">{userDetails.email}</p>
+          </div>
+          {userDetails.role === "staff" ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Department</label>
+                <p className="mt-1 text-sm text-gray-900">{userDetails.department}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Staff ID</label>
+                <p className="mt-1 text-sm text-gray-900">{userDetails.staffID}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Register Number</label>
+                <p className="mt-1 text-sm text-gray-900">{userDetails.registerNumber}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Semester</label>
+                <p className="mt-1 text-sm text-gray-900">{userDetails.semester}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Tutor Name</label>
+                <p className="mt-1 text-sm text-gray-900">{userDetails.tutorName}</p>
+              </div>
+            </>
+          )}
         </div>
-      )}
-      <button onClick={() => navigate(-1)}>Back to Dashboard</button>
+      </div>
     </div>
   );
 };
