@@ -6,9 +6,11 @@ const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
 const User = require("../models/User");
 const OTP = require("../models/Otp");
+const Staff = require("../models/Staff");
 
 dotenv.config();
 const router = express.Router();
+const app = express(); // Added this line
 
 // 🔹 Configure Nodemailer
 const transporter = nodemailer.createTransport({
@@ -26,8 +28,10 @@ const generateOtp = () => crypto.randomInt(100000, 999999).toString();
 router.post("/forgot-password", async (req, res) => {
     try {
         const { email } = req.body;
-        const user = await User.findOne({ email });
-
+        let user = await User.findOne({ email });
+        if (!user) {
+            user = await Staff.findOne({ email });
+        }
         if (!user) {
             return res.status(400).json({ exists: false, message: "Email not registered." });
         }
@@ -46,7 +50,7 @@ router.post("/forgot-password", async (req, res) => {
         const mailOptions = {
             from: `"ODCSE Support" <${process.env.EMAIL_USER}>`,
             to: email,
-            subject: "Verify Your Login",
+            subject: "Verify Your OTP",
             text: `Below is your one-time passcode: ${otp}`,
             html: `
                 <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
@@ -61,11 +65,11 @@ router.post("/forgot-password", async (req, res) => {
                         </div>
         
                         <!-- Header Text -->
-                        <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 10px;">Verify your login</h2>
+                        <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 10px;">Your OTP</h2>
         
                         <!-- Body Text -->
                         <p style="font-size: 16px; color: #333333; margin-bottom: 20px;">
-                            Below is your one-time passcode:
+                            Below is your one-time passcode
                         </p>
         
                         <!-- OTP (Centered and Spaced Out) -->
@@ -75,21 +79,16 @@ router.post("/forgot-password", async (req, res) => {
         
                         <!-- Help Text -->
                         <p style="font-size: 14px; color: #666666; margin-top: 20px;">
-                            We're here to help if you need it. Visit the 
-                            <a href="#" style="color: #0066cc; text-decoration: none;">ODCSE Support</a> for more info or 
-                            <a href="#" style="color: #0066cc; text-decoration: none;">contact us</a>.
+                                This OTP is valid for 5 minutes and should not be shared with anyone. 
+                                If you did not request this OTP, please ignore this email.
                         </p>
         
                         <!-- Footer -->
-                        <p style="font-size: 14px; color: #888888; margin-top: 20px;">– ODCSE Security</p>
+                        <p style="font-size: 14px; color: #888888; margin-top: 20px;">– ODCSE Support</p>
                     </div>
                 </div>
             ` 
         };
-        
-        
-        
-
         await transporter.sendMail(mailOptions);
         console.log(`OTP sent to ${email}: ${otp}`); // Debugging log
 
@@ -110,7 +109,7 @@ router.post("/verify-otp", async (req, res) => {
             return res.status(400).json({ message: "Missing required fields." });
         }
 
-        const otpRecord = await OTP.findOne({ email: email.toLowerCase() });
+        const otpRecord = await OTP.findOne({ email });
         if (!otpRecord) {
             return res.status(400).json({ message: "OTP expired or not found. Request a new one." });
         }
@@ -121,16 +120,19 @@ router.post("/verify-otp", async (req, res) => {
         }
 
         if (otpRecord.expiresAt < Date.now()) {
-            await OTP.deleteOne({ email: email.toLowerCase() });
+            await OTP.deleteOne({ email });
             return res.status(400).json({ message: "OTP expired. Request a new one." });
         }
 
-        res.json({ verified: true, otpToken: otpRecord.otp });  // ✅ Send OTP token back
+        res.json({ verified: true, otpToken: otpRecord.otp });
+
     } catch (error) {
         console.error("OTP Verification Error:", error);
         res.status(500).json({ message: "Internal server error." });
     }
 });
+
+// ✅ **Reset Password**
 router.post("/reset-password", async (req, res) => {
     try {
         const { email, password, otpToken } = req.body;
@@ -139,30 +141,38 @@ router.post("/reset-password", async (req, res) => {
             return res.status(400).json({ message: "Missing required fields." });
         }
 
-        const user = await User.findOne({ email: email.toLowerCase() });
+        // Check in both users and staff collections
+        let user = await User.findOne({ email });
+        let collection = User; // Default to User collection
+
+        if (!user) {
+            user = await Staff.findOne({ email });
+            collection = Staff; // If found in Staff, update collection reference
+        }
+
         if (!user) {
             return res.status(400).json({ message: "User not found." });
         }
 
-        const otpRecord = await OTP.findOne({ email: email.toLowerCase() });
+        const otpRecord = await OTP.findOne({ email });
         if (!otpRecord) {
             return res.status(400).json({ message: "OTP expired or not found. Request a new one." });
         }
 
-        const isOtpValid = otpToken === otpRecord.otp;  // ✅ Compare stored OTP token
+        const isOtpValid = otpToken === otpRecord.otp;
         if (!isOtpValid) {
             return res.status(400).json({ message: "Invalid OTP token." });
         }
 
         if (otpRecord.expiresAt < Date.now()) {
-            await OTP.deleteOne({ email: email.toLowerCase() });
+            await OTP.deleteOne({ email });
             return res.status(400).json({ message: "OTP expired. Request a new one." });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        await User.updateOne({ email: email.toLowerCase() }, { $set: { password: hashedPassword } });
+        await collection.updateOne({ email }, { $set: { password: hashedPassword } }); // ✅ Uses the correct collection
 
-        await OTP.deleteOne({ email: email.toLowerCase() });
+        await OTP.deleteOne({ email });
 
         res.json({ success: true, message: "Password successfully reset! You can now log in." });
 
@@ -173,26 +183,68 @@ router.post("/reset-password", async (req, res) => {
 });
 
 
+
 // ✅ **Login**
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ email });
+        let user = await User.findOne({ email });
+        let role = "user";
+
+        if (!user) {
+            user = await Staff.findOne({ email });
+            role = "staff";
+        }
 
         if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-        // Generate JWT Token
-        const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ id: user._id, email: user.email, role, name: user.name }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
-        res.status(200).json({ message: "Login successful", token });
+        res.status(200).json({ message: "Login successful", token, role, name: user.name });
 
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).json({ message: "Server error" });
     }
 });
+
+
+// ✅ **Profile**
+router.get("/api/user/profile", async (req, res) => {
+    try {
+      const email = req.query.email;
+      console.log("🔍 Received request for email:", email);
+  
+      if (!email) {
+        console.log("❌ Missing email in request");
+        return res.status(400).json({ message: "Email is required" });
+      }
+  
+      const [user, staff] = await Promise.all([
+        User.findOne({ email }),
+        Staff.findOne({ email }),
+      ]);
+  
+      if (user) {
+        console.log("✅ Found user:", user);
+        return res.json(user);
+      }
+      if (staff) {
+        console.log("✅ Found staff:", staff);
+        return res.json(staff);
+      }
+  
+      console.log("❌ User not found in database");
+      return res.status(404).json({ message: "User not found in database" });
+    } catch (error) {
+      console.error("🔥 Server error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
+
 
 module.exports = router;

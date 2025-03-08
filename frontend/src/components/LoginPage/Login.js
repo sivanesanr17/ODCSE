@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FaEnvelope, FaLock } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./login.css";
-//All Good
+
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  
+
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -33,16 +33,46 @@ const Login = () => {
       if (response.data.token) {
         localStorage.setItem("authToken", response.data.token);
         localStorage.setItem("userEmail", email);
+        localStorage.setItem("role", response.data.role);
+        localStorage.setItem("userName", response.data.name);
+
         setSuccess("Login successful! Redirecting...");
 
-        setTimeout(() => navigate("/dashboard"), 1000);
-      } else {
+        setTimeout(() => {
+          if (response.data.role === "user") {
+            navigate(`/userdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
+          } else if (response.data.role === "staff") {
+            navigate(`/staffdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
+          }
+        }, 1000);
+      }
+      else {
         setError("Invalid credentials!");
       }
     } catch (error) {
       setError(error.response?.data?.message || "Login failed. Please try again.");
     }
   };
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      localStorage.clear();
+      navigate("/");
+    }, 1800000); // 30 minutes inactivity
+
+    window.addEventListener("mousemove", resetTimer);
+    window.addEventListener("keydown", resetTimer);
+
+    function resetTimer() {
+      clearTimeout(timeout);
+    }
+
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keydown", resetTimer);
+    };
+  }, []);
 
   return (
     <div className="login-container">
