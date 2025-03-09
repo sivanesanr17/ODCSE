@@ -13,6 +13,7 @@ const Profile = () => {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -61,25 +62,36 @@ const Profile = () => {
   }, []);
 
   const handleTutorUpdate = async () => {
+    if (isSaving) return; // Prevent double click
+    setIsSaving(true);
     setError("");
+  
     try {
       const authToken = localStorage.getItem("authToken");
-      const userEmail = localStorage.getItem("userEmail").trim();
-
+      const userEmail = localStorage.getItem("userEmail").trim().toLowerCase();
+  
       await axios.put(
         "http://localhost:5000/api/auth/update-tutor",
-        { email: userEmail, tutorName: selectedTutor },
+        {
+          email: userEmail,
+          tutorName: selectedTutor,
+          studentName: userDetails.name,
+          semester: userDetails.semester,
+        },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
-
+  
       setUserDetails({ ...userDetails, tutorName: selectedTutor });
       setIsEditingTutor(false);
       setSuccessMessage("✅ Tutor name updated successfully!");
       setTimeout(() => setSuccessMessage(""), 1000);
     } catch (error) {
       setError("Failed to update tutor name. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
+  
 
   if (loading) return <div className="text-center mt-10">Loading...</div>;
   if (error) return <div className="text-red-500 text-center mt-10">{error}</div>;
@@ -139,10 +151,13 @@ const Profile = () => {
                     </select>
                     <button
                       onClick={handleTutorUpdate}
-                      className="ml-2 px-2 py-1 bg-blue-500 text-white rounded-md text-sm"
-                    >
-                      Save
-                    </button>
+                      className={`ml-2 px-2 py-1 text-white rounded-md text-sm ${
+                        isSaving ? 'bg-gray-400' : 'bg-blue-500'
+                      }`}
+                      disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
                   </div>
                 ) : (
                   <div className="flex items-center">
