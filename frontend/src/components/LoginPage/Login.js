@@ -15,32 +15,33 @@ const Login = () => {
     e.preventDefault();
     setError("");
     setSuccess("");
-
+  
     if (!email || !password) {
       setError("⚠️ Both fields are required!");
       return;
     }
-
+  
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError("⚠️ Invalid email format!");
       return;
     }
-
+  
     try {
       const response = await axios.post("http://localhost:5000/api/auth/login", { email, password });
-
+  
       if (response.data.token) {
         localStorage.setItem("authToken", response.data.token);
         localStorage.setItem("userEmail", email);
         localStorage.setItem("role", response.data.role);
         localStorage.setItem("userName", response.data.name);
-
+  
         setSuccess("Login successful! Redirecting...");
-
+  
         setTimeout(() => {
           if (response.data.role === "user") {
             navigate(`/userdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
           } else if (response.data.role === "staff") {
+            // Ensure the URL is correctly constructed without extra segments
             navigate(`/staffdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
           }
         }, 1000);

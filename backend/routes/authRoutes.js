@@ -232,28 +232,58 @@ router.get("/staff-list", async (req, res) => {
 
 // ✅ API to update the tutor name
 router.put("/update-tutor", async (req, res) => {
-    const { email, tutorName } = req.body;
-    
-    if (!tutorName) {
-      return res.status(400).send("Tutor Name is required");
+  const { email, tutorName, studentName, semester } = req.body;
+  
+  if (!tutorName) {
+    return res.status(400).send("Tutor Name is required");
+  }
+
+  try {
+    // ✅ Update the tutor name in the database (User collection)
+    const result = await User.updateOne(
+      { email: email.toLowerCase().trim() },
+      { $set: { tutorName } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send("User not found");
     }
-  
-    try {
-      const result = await User.updateOne(
-        { email: email.toLowerCase().trim() },
-        { $set: { tutorName } }
-      );
-  
-      if (result.matchedCount === 0) {
-        return res.status(404).send("User not found");
+
+    // ✅ Fetch the tutor's email from the Staff collection
+    const tutor = await Staff.findOne({ name: tutorName });
+    if (!tutor) {
+      return res.status(404).send("Tutor not found");
+    }
+
+    // ✅ Send email notification to the tutor
+    const mailOptions = {
+      from: `"ODCSE Support" <${process.env.EMAIL_USER}>`,
+      to: tutor.email,
+      subject: "You've been added as a tutor",
+      html: `
+        <p>Hello <strong>${tutorName}</strong>,</p>
+        <p>The student <strong>${studentName}</strong> who is currently studying in <strong>${semester} semester</strong> has added you as their tutor.</p>
+        <p>Please assist them with their academic needs.</p>
+        <br/>
+        <p>Best regards,<br/>Your College Admin</p>
+      `,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.error("Failed to send email:", error);
+        return res.status(500).send("Tutor name updated but email not sent.");
       }
-  
-      res.send("Tutor name updated successfully");
-    } catch (error) {
-      console.error("Error updating tutor:", error);
-      res.status(500).send("Failed to update tutor name");
-    }
-  });
+      console.log("Email sent: " + info.response);
+      res.send("Tutor name updated successfully and email notification sent.");
+    });
+
+  } catch (error) {
+    console.error("Error updating tutor:", error);
+    res.status(500).send("Failed to update tutor name");
+  }
+});
+
   
 
 module.exports = router;

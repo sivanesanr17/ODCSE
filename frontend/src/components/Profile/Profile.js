@@ -83,7 +83,7 @@ const Profile = () => {
   
       setUserDetails({ ...userDetails, tutorName: selectedTutor });
       setIsEditingTutor(false);
-      setSuccessMessage("✅ Tutor name updated successfully!");
+      setSuccessMessage("✅ Tutor updated successfully!");
       setTimeout(() => setSuccessMessage(""), 1000);
     } catch (error) {
       setError("Failed to update tutor name. Please try again.");
@@ -149,15 +149,16 @@ const Profile = () => {
                         ))
                       )}
                     </select>
-                    <button
-                      onClick={handleTutorUpdate}
-                      className={`ml-2 px-2 py-1 text-white rounded-md text-sm ${
-                        isSaving ? 'bg-gray-400' : 'bg-blue-500'
-                      }`}
-                      disabled={isSaving}
+                                      <button
+                    onClick={handleTutorUpdate}
+                    className={`ml-2 px-2 py-1 text-white rounded-md text-sm ${
+                      isSaving ? 'bg-gray-400' : 'bg-blue-500'
+                    }`}
+                    disabled={isSaving}
                   >
                     {isSaving ? 'Saving...' : 'Save'}
                   </button>
+
                   </div>
                 ) : (
                   <div className="flex items-center">
