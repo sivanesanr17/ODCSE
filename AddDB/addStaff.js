@@ -67,9 +67,9 @@ async function addStaff(staffData) {
 
 // Example Staff Data
 const staff = {
-    name: "Sivanesan",
-    email: "cnpnesan@gmail.com",
-    password: "Cnpnesan@17", // Must follow password policy
+    name: "Mrs.Dharshana Deepthi AP/CSE",
+    email: "dharashanadeepthi@gmail.com",
+    password: "Cnpsharan@17", // Must follow password policy
     department: "Computer Science",
     staffID: "22CS201",
 };

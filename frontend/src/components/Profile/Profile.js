@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { FaPencilAlt } from "react-icons/fa";
 
 const Profile = () => {
   const [userDetails, setUserDetails] = useState(null);
+  const [isEditingTutor, setIsEditingTutor] = useState(false);
+  const [staffList, setStaffList] = useState([]);
+  const [selectedTutor, setSelectedTutor] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [staffLoading, setStaffLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,14 +29,15 @@ const Profile = () => {
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
-          params: {
-            email: userEmail,
-          },
+          params: { email: userEmail },
         });
 
         setUserDetails(response.data);
+        setSelectedTutor(response.data.tutorName);
+        setLoading(false);
       } catch (error) {
-        console.error("Failed to fetch user details:", error);
+        setError("Failed to fetch user details. Please try again.");
+        setLoading(false);
         navigate("/");
       }
     };
@@ -36,9 +45,44 @@ const Profile = () => {
     fetchUserDetails();
   }, [navigate]);
 
-  if (!userDetails) {
-    return <div>Loading...</div>;
-  }
+  useEffect(() => {
+    const fetchStaffList = async () => {
+      try {
+        const response = await axios.get("http://localhost:5000/api/auth/staff-list");
+        setStaffList(response.data);
+        setStaffLoading(false);
+      } catch (error) {
+        setError("Failed to fetch staff list. Please try again.");
+        setStaffLoading(false);
+      }
+    };
+
+    fetchStaffList();
+  }, []);
+
+  const handleTutorUpdate = async () => {
+    setError("");
+    try {
+      const authToken = localStorage.getItem("authToken");
+      const userEmail = localStorage.getItem("userEmail").trim();
+
+      await axios.put(
+        "http://localhost:5000/api/auth/update-tutor",
+        { email: userEmail, tutorName: selectedTutor },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+
+      setUserDetails({ ...userDetails, tutorName: selectedTutor });
+      setIsEditingTutor(false);
+      setSuccessMessage("✅ Tutor name updated successfully!");
+      setTimeout(() => setSuccessMessage(""), 1000);
+    } catch (error) {
+      setError("Failed to update tutor name. Please try again.");
+    }
+  };
+
+  if (loading) return <div className="text-center mt-10">Loading...</div>;
+  if (error) return <div className="text-red-500 text-center mt-10">{error}</div>;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
@@ -76,11 +120,46 @@ const Profile = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Tutor Name</label>
-                <p className="mt-1 text-sm text-gray-900">{userDetails.tutorName}</p>
+                {isEditingTutor ? (
+                  <div className="flex items-center">
+                    <select
+                      value={selectedTutor}
+                      onChange={(e) => setSelectedTutor(e.target.value)}
+                      className="mt-1 block w-full border-gray-300 rounded-md text-sm"
+                    >
+                      {staffLoading ? (
+                        <option>Loading staff...</option>
+                      ) : (
+                        staffList.map((staff) => (
+                          <option key={staff._id} value={staff.name}>
+                            {staff.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <button
+                      onClick={handleTutorUpdate}
+                      className="ml-2 px-2 py-1 bg-blue-500 text-white rounded-md text-sm"
+                    >
+                      Save
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <p className="mt-1 text-sm text-gray-900">{userDetails.tutorName}</p>
+                    <button
+                      onClick={() => setIsEditingTutor(true)}
+                      className="ml-2 text-gray-500"
+                    >
+                      <FaPencilAlt />
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
         </div>
+        {successMessage && <div className="text-green-500 mt-4 text-sm">{successMessage}</div>}
       </div>
     </div>
   );
