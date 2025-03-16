@@ -259,16 +259,30 @@ router.put("/update-tutor", async (req, res) => {
     const mailOptions = {
       from: `"ODCSE Support" <${process.env.EMAIL_USER}>`,
       to: tutor.email,
-      subject: "You've been added as a tutor",
+      subject: "Tutor Assignment Notification",
       html: `
-        <p>Hello <strong>${tutorName}</strong>,</p>
-        <p>The student <strong>${studentName}</strong> who is currently studying in <strong>${semester} semester</strong> has added you as their tutor.</p>
-        <p>Please assist them with their academic needs.</p>
-        <br/>
-        <p>Best regards,<br/>Your College Admin</p>
+        <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 30px; text-align: center;">
+          <!-- Outer Email Container -->
+          <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 20px; border-radius: 6px; 
+                      box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.1); text-align: center;">
+            <!-- Logo -->
+            <div style="text-align: center; margin-bottom: 12px;">
+              <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 90px;">
+            </div>
+            <!-- Header Text -->
+            <h2 style="color: #000000; font-size: 18px; font-weight: 600; margin-bottom: 6px;">Added You As Tutor</h2>
+            <!-- Body Text -->
+            <p style="font-size: 14px; color: #333333; margin-bottom: 12px; text-align: center;">
+              We are pleased to inform you that <strong>${studentName}</strong>, a student currently in their <strong>${semester} semester</strong>, has added you as their official tutor. 
+              Moving forward, all OD (On-Duty) requests from this student will be directed to your email for review and approval. 
+              Kindly acknowledge those OD requests and provide your support as needed.
+            </p>
+            <!-- Footer -->
+            <p style="font-size: 12px; color: #888888; margin-top: 12px;">- ODCSE Support</p>
+          </div>
+        </div>
       `,
     };
-
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         console.error("Failed to send email:", error);
@@ -283,7 +297,4 @@ router.put("/update-tutor", async (req, res) => {
     res.status(500).send("Failed to update tutor name");
   }
 });
-
-  
-
 module.exports = router;

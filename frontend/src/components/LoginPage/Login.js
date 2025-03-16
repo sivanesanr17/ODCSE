@@ -8,9 +8,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  const navigate = useNavigate();
-
+  const navigate = useNavigate();  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -34,6 +32,11 @@ const Login = () => {
         localStorage.setItem("userEmail", email);
         localStorage.setItem("role", response.data.role);
         localStorage.setItem("userName", response.data.name);
+        localStorage.setItem("user", JSON.stringify({
+          name: response.data.name,
+          email: response.data.email,
+          role: response.data.role
+        }));
   
         setSuccess("Login successful! Redirecting...");
   
