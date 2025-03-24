@@ -44,8 +44,9 @@ const Login = () => {
           if (response.data.role === "user") {
             navigate(`/userdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
           } else if (response.data.role === "staff") {
-            // Ensure the URL is correctly constructed without extra segments
             navigate(`/staffdashboard/${response.data.name.toLowerCase().replace(/\s+/g, "-")}`);
+          } else if (response.data.role === "admin") {
+            navigate("/adminpanel"); // Navigate to Admin Panel
           }
         }, 1000);
       } else {
@@ -55,6 +56,7 @@ const Login = () => {
       setError(error.response?.data?.message || "Login failed. Please try again.");
     }
   };
+  
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">

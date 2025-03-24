@@ -8,6 +8,7 @@ const User = require("../models/User");
 const OTP = require("../models/Otp");
 const Staff = require("../models/Staff");
 const mongoose = require("mongoose");
+const Admin = require("../models/Admin");
 
 dotenv.config();
 const router = express.Router();
@@ -184,6 +185,11 @@ router.post("/login", async (req, res) => {
       role = "staff";
     }
 
+    if (!user) {
+      user = await Admin.findOne({ email }); // Check in Admin collection
+      role = "admin";
+    }
+
     if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -197,6 +203,7 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // ✅ **Profile**
 // ✅ Get Profile Based on Role

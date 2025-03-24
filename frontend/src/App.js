@@ -5,6 +5,7 @@ import VerifyOtpPage from "./components/VerifyOtpPage/VerifyOtpPage";
 import ResetPassword from "./components/ResetPassword/ResetPassword";
 import UserDashboard from "./components/UserDashBoard/UserDashBoard";
 import StaffDashboard from "./components/StaffDashBoard/StaffDashBoard";
+import AdminDashboard from "./components/AdminDashboard.js/AdminDashboard";
 import Profile from "./components/Profile/Profile";
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
         {/* Dashboard Routes (Now handle authentication inside each component) */}
         <Route path="/userdashboard/:username" element={<UserDashboard />} />
         <Route path="/staffdashboard/:username" element={<StaffDashboard />} />
+        <Route path="/adminpanel" element={<AdminDashboard />} />
         <Route path="/profile" element={<Profile />} />
       </Routes>
     </Router>
