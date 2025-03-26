@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { FaUserCircle, FaPlus } from "react-icons/fa";
+import { FaUserCircle } from "react-icons/fa"; // For profile icon
+import { UserRoundPlus } from "lucide-react"; // For adding students
 import axios from "axios";
 
 const UserDashBoard = () => {
@@ -77,7 +78,8 @@ const UserDashBoard = () => {
   const fetchStudentDetails = async (registerNumber) => {
     try {
       const response = await axios.get(`http://localhost:5000/api/students/${registerNumber}`);
-      return response.data; // Returns { name, semester, section, attendancePercentage, tutor }
+      console.log("Student Details Response:", response.data); // Log the response
+      return response.data;
     } catch (error) {
       console.error("Error fetching student details:", error);
       return null;
@@ -174,13 +176,13 @@ const UserDashBoard = () => {
         <img
           src="/assets/ODCSE Logo.png"
           alt="Logo"
-          className="h-16 w-18 filter brightness-0 invert"
+          className="h-16 w-18 filter brightness-0 invert" // Updated width to w-18
         />
 
         {/* Tabs for Events, Other OD, and History */}
-        <div className="flex-grow flex justify-center gap-4">
+        <div className="flex-grow flex justify-center gap-8"> {/* Increased gap for better spacing */}
           <button
-            className={`py-2 px-4 text-lg font-medium ${
+            className={`p-2 text-lg font-medium ${
               activeTab === "events"
                 ? "text-white border-b-2 border-white"
                 : "text-gray-400 hover:text-white"
@@ -190,7 +192,7 @@ const UserDashBoard = () => {
             Events
           </button>
           <button
-            className={`py-2 px-4 text-lg font-medium ${
+            className={`p-2 text-lg font-medium ${
               activeTab === "otherOD"
                 ? "text-white border-b-2 border-white"
                 : "text-gray-400 hover:text-white"
@@ -200,7 +202,7 @@ const UserDashBoard = () => {
             Other OD
           </button>
           <button
-            className={`py-2 px-4 text-lg font-medium ${
+            className={`p-2 text-lg font-medium ${
               activeTab === "history"
                 ? "text-white border-b-2 border-white"
                 : "text-gray-400 hover:text-white"
@@ -212,10 +214,12 @@ const UserDashBoard = () => {
         </div>
 
         {/* Profile Icon */}
-        <FaUserCircle
-          className="text-white text-3xl cursor-pointer"
-          onClick={() => navigate("/profile")}
-        />
+        <div className="flex items-center">
+          <FaUserCircle
+            className="text-white text-3xl cursor-pointer"
+            onClick={() => navigate("/profile")}
+          />
+        </div>
       </div>
 
       {/* Main Content */}
@@ -306,10 +310,12 @@ const UserDashBoard = () => {
                         <h3 className="text-lg font-semibold text-gray-800">
                           Student Details
                         </h3>
-                        <FaPlus
-                          className="text-blue-600 text-2xl cursor-pointer"
+                        <button
+                          className="text-blue-600 hover:text-blue-700"
                           onClick={addStudentRow}
-                        />
+                        >
+                          <UserRoundPlus className="w-6 h-6" /> {/* Lucide Icon for adding students */}
+                        </button>
                       </div>
                       <table className="w-full">
                         <thead>
