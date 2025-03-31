@@ -1286,3 +1286,4 @@ const UploadEventsComponent = ({ fetchEvents }) => {
 };
 
 export default StaffDashboard;
+
