@@ -1,0 +1,7 @@
+frontend/node_modules/
+backend/node_modules/
+adddb/node_modules/
+adddb/addAdmin.js/
+adddb/addStaff.js/
+adddb/addUser.js/
+backend/.env/
