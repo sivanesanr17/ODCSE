@@ -98,7 +98,8 @@ const AdminDashboard = () => {
     email: '',
     password: '',
     staffID: '',
-    designation: ''
+    designation: '',
+    removeSignature: false
   });
 
   useEffect(() => {
@@ -293,6 +294,33 @@ const AdminDashboard = () => {
   const handleEditSave = async (e) => {
     e.preventDefault();
     
+    // For staff edits, we'll need to use FormData if there's a signature file
+    if (editSelectedType === 'staff' && (editFormData.signature || editFormData.removeSignature)) {
+      const formData = new FormData();
+      formData.append('name', editFormData.name);
+      formData.append('email', editFormData.email);
+      formData.append('staffID', editFormData.staffID);
+      formData.append('designation', editFormData.designation);
+      
+      if (editFormData.password) {
+        formData.append('password', editFormData.password);
+      }
+      
+      if (editFormData.signature) {
+        formData.append('signature', editFormData.signature);
+      }
+      
+      if (editFormData.removeSignature) {
+        formData.append('removeSignature', 'true');
+      }
+  
+      // You'll need to update your API endpoint to handle multipart form data
+      // for staff updates with signatures
+      setShowSaveConfirmation(true);
+      return;
+    }
+    
+    // Original save logic for non-file updates
     setShowSaveConfirmation(true);
   };
 
@@ -435,69 +463,93 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleStaffSubmit = async (e) => {
-    e.preventDefault();
+// In your AdminDashboard component, update the handleStaffSubmit function:
+const handleStaffSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (staffFormData.password.length < 8) {
+    setAlert({
+      show: true,
+      message: 'Password must be at least 8 characters',
+      type: 'error'
+    });
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('name', staffFormData.name);
+    formData.append('email', staffFormData.email);
+    formData.append('password', staffFormData.password);
+    formData.append('staffID', staffFormData.staffID);
+    formData.append('designation', staffFormData.designation);
     
-    if (staffFormData.password.length < 8) {
-      setAlert({
-        show: true,
-        message: 'Password must be at least 8 characters',
-        type: 'error'
-      });
-      return;
+    // Append signature file if exists
+    if (staffFormData.signature) {
+      formData.append('signature', staffFormData.signature);
     }
-  
-    try {
-      const response = await axios.post(
-        'http://localhost:5000/api/auth/add-staff',
-        {
-          name: staffFormData.name,
-          email: staffFormData.email,
-          password: staffFormData.password,
-          staffID: staffFormData.staffID,
-          designation: staffFormData.designation
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-            'Content-Type': 'application/json'
-          }
+
+    // Log FormData contents for debugging
+    for (let [key, value] of formData.entries()) {
+      console.log(key, value);
+    }
+
+    const response = await axios.post(
+      'http://localhost:5000/api/auth/add-staff',
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+          'Content-Type': 'multipart/form-data'
         }
-      );
-  
-      if (response.data.success) {
-        setAlert({
-          show: true,
-          message: `Staff ${staffFormData.name} registered successfully!`,
-          type: 'success'
-        });
-        
-        setTimeout(() => {
-          setAlert({...alert, show: false});
-          setStaffFormData({
-            name: '',
-            email: '',
-            password: '',
-            staffID: '',
-            designation: ''
-          });
-          setShowStaffForm(false);
-          setShowAddOptions(true);
-          fetchStaffList();
-        }, 3000);
       }
-    } catch (error) {
-      const errorMsg = error.response?.data?.message || 
-                     error.message || 
-                     'Staff registration failed. Please try again.';
-      
+    );
+
+    if (response.data.success) {
       setAlert({
         show: true,
-        message: errorMsg,
-        type: 'error'
+        message: `Staff ${staffFormData.name} registered successfully!`,
+        type: 'success'
       });
+      
+      setTimeout(() => {
+        setAlert({...alert, show: false});
+        setStaffFormData({
+          name: '',
+          email: '',
+          password: '',
+          staffID: '',
+          designation: '',
+          signature: null
+        });
+        setShowStaffForm(false);
+        setShowAddOptions(true);
+        fetchStaffList();
+      }, 3000);
     }
-  };
+  } catch (error) {
+    const errorMsg = error.response?.data?.message || 
+                   error.message || 
+                   'Staff registration failed. Please try again.';
+    
+    setAlert({
+      show: true,
+      message: errorMsg,
+      type: 'error'
+    });
+  }
+};
+
+// Add this new handler for file input
+const handleSignatureUpload = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    setStaffFormData(prev => ({
+      ...prev,
+      signature: file
+    }));
+  }
+};
   
   const handleStaffInputChange = (e) => {
     const { name, value } = e.target;
@@ -1242,6 +1294,77 @@ const AdminDashboard = () => {
                                 </div>
                               </div>
                             </div>
+
+                              {/* PASTE THE SIGNATURE UPLOAD SECTION HERE */}
+                              {editUserData?.signature?.url && (
+                                <div className="mt-4">
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Signature</label>
+                                  <div className="flex items-center">
+                                    <img 
+                                      src={editUserData.signature.url} 
+                                      alt="Current signature" 
+                                      className="h-16 w-auto border border-gray-300 rounded"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditFormData(prev => ({
+                                          ...prev,
+                                          removeSignature: true
+                                        }));
+                                      }}
+                                      className="ml-2 text-red-600 hover:text-red-800"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {(!editUserData?.signature?.url || editFormData.removeSignature) && (
+                                <div className="mt-4">
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {editFormData.removeSignature ? 'Upload New Signature' : 'Signature Upload'}
+                                  </label>
+                                  <div className="flex items-center">
+                                    <label className="flex flex-col items-center px-4 py-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
+                                      <span className="text-sm font-medium text-gray-700">
+                                        {editFormData.signature ? editFormData.signature.name : 'Choose file'}
+                                      </span>
+                                      <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                          if (e.target.files[0]) {
+                                            setEditFormData(prev => ({
+                                              ...prev,
+                                              signature: e.target.files[0],
+                                              removeSignature: false
+                                            }));
+                                          }
+                                        }}
+                                      />
+                                    </label>
+                                    {editFormData.signature && (
+                                      <button 
+                                        type="button"
+                                        onClick={() => setEditFormData(prev => ({ 
+                                          ...prev, 
+                                          signature: null,
+                                          removeSignature: true
+                                        }))}
+                                        className="ml-2 text-red-600 hover:text-red-800"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Upload a clear image of the staff member's signature (JPG, PNG)
+                                  </p>
+                                </div>
+                              )}
             
                             <button
                               type="submit"
@@ -1369,8 +1492,8 @@ const AdminDashboard = () => {
                           type="email"
                           name="email"
                           autoComplete="off"
-                          value={formData.email}
-                          onChange={handleInputChange}
+                          value={staffFormData.email}
+                          onChange={handleStaffInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           required
                           pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
@@ -1531,6 +1654,35 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                       </div>
+
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Signature Upload</label>
+                      <div className="flex items-center">
+                        <label className="flex flex-col items-center px-4 py-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
+                          <span className="text-sm font-medium text-gray-700">
+                            {staffFormData.signature ? staffFormData.signature.name : 'Choose file'}
+                          </span>
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={handleSignatureUpload}
+                          />
+                        </label>
+                        {staffFormData.signature && (
+                          <button 
+                            type="button"
+                            onClick={() => setStaffFormData(prev => ({ ...prev, signature: null }))}
+                            className="ml-2 text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Upload a clear image of the staff member's signature (JPG, PNG)
+                      </p>
+                    </div>
             
                       <button
                         type="submit"

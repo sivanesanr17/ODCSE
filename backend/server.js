@@ -8,7 +8,7 @@ const app = express();
 
 // Enhanced CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000", // Specify allowed origin
+  origin: "http://localhost:3000", // Specify allowed origin
   credentials: true // If using cookies/sessions
 }));
 

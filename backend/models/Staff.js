@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// models/Staff.js
 const StaffSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, trim: true },
@@ -8,8 +9,12 @@ const StaffSchema = new mongoose.Schema({
   role: { type: String, default: "staff" },
   department: { type: String, required: true, trim: true },  
   staffID: { type: String, required: true, unique: true, trim: true },
-  designation: { type: String, required: true, trim: true }  // ✅ Added designation field
-}, { collection: "staffs" });  
+  designation: { type: String, required: true, trim: true },
+  signature: { 
+    public_id: String,
+    url: String 
+  }
+}, { collection: "staffs" });
 
 // ✅ Automatically Hash Password Before Saving
 StaffSchema.pre("save", async function (next) {

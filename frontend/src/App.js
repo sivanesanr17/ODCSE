@@ -7,6 +7,7 @@ import UserDashboard from "./components/UserDashBoard/UserDashBoard";
 import StaffDashboard from "./components/StaffDashBoard/StaffDashBoard";
 import AdminDashboard from "./components/AdminDashboard.js/AdminDashboard";
 import Profile from "./components/Profile/Profile";
+import InvitationResponse from './components/InvitationResponse.js/InvitationResponse';
 
 function App() {
   return (
@@ -23,6 +24,8 @@ function App() {
         <Route path="/staffdashboard/:username" element={<StaffDashboard />} />
         <Route path="/adminpanel" element={<AdminDashboard />} />
         <Route path="/profile" element={<Profile />} />
+
+        <Route path="/invitation-response" element={<InvitationResponse />} />
       </Routes>
     </Router>
   );
