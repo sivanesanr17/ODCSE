@@ -1088,7 +1088,7 @@ router.post("/change-tutor", async (req, res) => {
 router.put("/update-staff/:id", upload.single('signature'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, staffID, designation } = req.body;
+    const { name, email, staffID, designation, removeSignature } = req.body;
 
     // Find the staff
     const staff = await Staff.findById(id);
@@ -1099,28 +1099,13 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
       });
     }
 
-    // Check for duplicate email or staffID
-    if (email && email !== staff.email) {
-      const emailExists = await Staff.findOne({ email });
-      if (emailExists) {
-        return res.status(400).json({ 
-          success: false,
-          message: "Email already in use by another staff member" 
-        });
-      }
+    // Handle signature removal if requested
+    if (removeSignature === 'true' && staff.signature?.public_id) {
+      await cloudinary.uploader.destroy(staff.signature.public_id);
+      staff.signature = null;
     }
 
-    if (staffID && staffID !== staff.staffID) {
-      const staffIDExists = await Staff.findOne({ staffID });
-      if (staffIDExists) {
-        return res.status(400).json({ 
-          success: false,
-          message: "Staff ID already in use" 
-        });
-      }
-    }
-
-    // Handle signature update
+    // Handle new signature upload
     if (req.file) {
       // Delete old signature if exists
       if (staff.signature?.public_id) {
@@ -1145,7 +1130,7 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
       fs.unlinkSync(req.file.path);
     }
 
-    // Update fields
+    // Update other fields
     staff.name = name || staff.name;
     staff.email = email || staff.email;
     staff.staffID = staffID || staff.staffID;
@@ -1157,7 +1142,6 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
       staff.password = await bcrypt.hash(req.body.password, salt);
     }
 
-    // Save updated staff
     await staff.save();
 
     // Prepare response without sensitive data
@@ -1189,77 +1173,6 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
   }
 });
 
-// ✅ Update Staff (Admin Only)
-router.put("/update-staff/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, staffID, designation } = req.body;
-
-    // 1️⃣ Find the staff
-    const staff = await Staff.findById(id);
-    if (!staff) {
-      return res.status(404).json({ 
-        success: false,
-        message: "Staff member not found" 
-      });
-    }
-
-    // 2️⃣ Check for duplicate email or staffID
-    if (email && email !== staff.email) {
-      const emailExists = await Staff.findOne({ email });
-      if (emailExists) {
-        return res.status(400).json({ 
-          success: false,
-          message: "Email already in use by another staff member" 
-        });
-      }
-    }
-
-    if (staffID && staffID !== staff.staffID) {
-      const staffIDExists = await Staff.findOne({ staffID });
-      if (staffIDExists) {
-        return res.status(400).json({ 
-          success: false,
-          message: "Staff ID already in use" 
-        });
-      }
-    }
-
-    // 3️⃣ Update fields
-    staff.name = name || staff.name;
-    staff.email = email || staff.email;
-    staff.staffID = staffID || staff.staffID;
-    staff.designation = designation || staff.designation;
-
-    // 4️⃣ Update password if provided
-    if (req.body.password) {
-      const salt = await bcrypt.genSalt(10);
-      staff.password = await bcrypt.hash(req.body.password, salt);
-    }
-
-    // 5️⃣ Save updated staff
-    await staff.save();
-
-    // 6️⃣ Prepare response without sensitive data
-    const staffResponse = staff.toObject();
-    delete staffResponse.password;
-    delete staffResponse.__v;
-
-    res.status(200).json({
-      success: true,
-      message: "Staff member updated successfully",
-      data: staffResponse
-    });
-
-  } catch (error) {
-    console.error("Staff update error:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Internal server error",
-      error: error.message 
-    });
-  }
-});
 
 // ✅ Get Students by Tutor Name (protected route)
 router.get("/students-by-tutor", async (req, res) => {

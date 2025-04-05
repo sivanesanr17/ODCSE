@@ -111,7 +111,6 @@ const AdminDashboard = () => {
 
     const fetchAllData = async () => {
       await fetchUsers();
-      await fetchOdRequests();
       await fetchStaffList();
     };
 
@@ -149,17 +148,6 @@ const AdminDashboard = () => {
       setUsers(response.data);
     } catch (error) {
       console.error("Error fetching users:", error);
-    }
-  };
-
-  const fetchOdRequests = async () => {
-    try {
-      const response = await axios.get("http://localhost:5000/api/admin/od-requests", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
-      });
-      setOdRequests(response.data);
-    } catch (error) {
-      console.error("Error fetching OD requests:", error);
     }
   };
 
@@ -294,34 +282,59 @@ const AdminDashboard = () => {
   const handleEditSave = async (e) => {
     e.preventDefault();
     
-    // For staff edits, we'll need to use FormData if there's a signature file
-    if (editSelectedType === 'staff' && (editFormData.signature || editFormData.removeSignature)) {
-      const formData = new FormData();
-      formData.append('name', editFormData.name);
-      formData.append('email', editFormData.email);
-      formData.append('staffID', editFormData.staffID);
-      formData.append('designation', editFormData.designation);
-      
-      if (editFormData.password) {
-        formData.append('password', editFormData.password);
-      }
-      
-      if (editFormData.signature) {
-        formData.append('signature', editFormData.signature);
-      }
-      
-      if (editFormData.removeSignature) {
-        formData.append('removeSignature', 'true');
-      }
+    try {
+      // For staff edits with signature changes
+      if (editSelectedType === 'staff' && (editFormData.signature || editFormData.removeSignature)) {
+        const formData = new FormData();
+        formData.append('name', editFormData.name);
+        formData.append('email', editFormData.email);
+        formData.append('staffID', editFormData.staffID);
+        formData.append('designation', editFormData.designation);
+        
+        if (editFormData.password) {
+          formData.append('password', editFormData.password);
+        }
+        
+        if (editFormData.signature) {
+          formData.append('signature', editFormData.signature);
+        }
+        
+        if (editFormData.removeSignature) {
+          formData.append('removeSignature', 'true');
+        }
   
-      // You'll need to update your API endpoint to handle multipart form data
-      // for staff updates with signatures
+        // Call API with FormData
+        const response = await axios.put(
+          `http://localhost:5000/api/auth/update-staff/${editUserData._id}`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+  
+        if (response.data.success) {
+          setAlert({
+            show: true,
+            message: 'Staff updated successfully with signature changes!',
+            type: 'success'
+          });
+          fetchStaffList();
+        }
+        return;
+      }
+      
+      // Original save logic for non-file updates
       setShowSaveConfirmation(true);
-      return;
+    } catch (error) {
+      setAlert({
+        show: true,
+        message: error.response?.data?.message || 'Error saving changes',
+        type: 'error'
+      });
     }
-    
-    // Original save logic for non-file updates
-    setShowSaveConfirmation(true);
   };
 
   const handleConfirmSave = async () => {
