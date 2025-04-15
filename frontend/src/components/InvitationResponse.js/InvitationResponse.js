@@ -1,4 +1,3 @@
-// src/pages/InvitationResponse.js
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
@@ -27,21 +26,26 @@ const InvitationResponse = () => {
         case 'not_found':
           setMessage('Invitation not found or already responded');
           break;
+        case 'already_responded':
+          setMessage('This invitation has already been responded to');
+          break;
         default:
           setMessage('An error occurred processing your response');
       }
-    } else if (success) {
+    } else if (success === 'true') {
       setIsError(false);
-      if (response === 'accept') {
-        setHeading('Accepted');
-        setMessage('Invitation accepted successfully!');
+      if (response === 'accepted') {
+        setHeading('Invitation Accepted');
+        setMessage('You have successfully accepted the invitation!');
         setIcon(<CheckCircleIcon className="h-12 w-12 text-green-500 mx-auto" />);
-      } else {
-        setHeading('Declined');
-        setMessage('Invitation declined successfully');
+      } else if (response === 'declined') {
+        setHeading('Invitation Declined');
+        setMessage('You have declined the invitation.');
         setIcon(<XCircleIcon className="h-12 w-12 text-red-500 mx-auto" />);
       }
-      setTimeout(() => navigate('/'), 3000);
+      // Redirect after 3 seconds only for successful responses
+      const timer = setTimeout(() => navigate('/'), 3000);
+      return () => clearTimeout(timer);
     }
   }, [searchParams, navigate]);
 

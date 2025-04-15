@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { ArrowLeft, Users, HelpCircle, LogOut, ChevronLeft, ChevronRight, UserPlus, UserMinus, UserPen, UserRoundCog, GraduationCap,Save } from "lucide-react";
+import { ArrowLeft, Users, HelpCircle, LogOut, ChevronLeft, ChevronRight, UserPlus, UserMinus, UserPen, UserRoundCog, GraduationCap, Save, Upload, FileText, X } from "lucide-react";
 import { Tooltip } from 'react-tooltip';
 import { Search, Trash2 } from "lucide-react"; // Add these to your existing imports
 
@@ -28,6 +28,7 @@ const AdminDashboard = () => {
   const [fromRegister, setFromRegister] = useState('');
   const [toRegister, setToRegister] = useState('');
   const [selectedStudents, setSelectedStudents] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedTutor, setSelectedTutor] = useState('');
   const [changeTutorStep, setChangeTutorStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -67,7 +68,7 @@ const AdminDashboard = () => {
         textAlign: 'center'
       }}>
         <p>{message}</p>
-        <button 
+        <button
           onClick={onClose}
           style={{
             backgroundColor: 'white',
@@ -122,15 +123,15 @@ const AdminDashboard = () => {
     setFetchError(null);
     try {
       const response = await axios.get('http://localhost:5000/api/auth/staff-list', {
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem("authToken")}` 
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`
         }
       });
-      
+
       if (!response.data || !Array.isArray(response.data)) {
         throw new Error("Invalid data received");
       }
-      
+
       setStaffList(response.data);
     } catch (error) {
       console.error("Fetch error:", error);
@@ -140,14 +141,53 @@ const AdminDashboard = () => {
     }
   };
 
+  const ProcessingPopup = () => {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center">
+        <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+          <div className="flex flex-col items-center">
+            {/* Spinner using Tailwind's animation classes */}
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin-slow mb-4"></div>
+            <p className="text-lg font-medium text-gray-800">Saving changes...</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const fetchUsers = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/admin/users", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("authToken")}` },
+      const response = await axios.get("http://localhost:5000/api/auth/admin/users", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+        },
       });
-      setUsers(response.data);
+
+      if (response.data && response.data.success && Array.isArray(response.data.users)) {
+        setUsers(response.data.users);
+      } else {
+        throw new Error("Invalid data format received");
+      }
     } catch (error) {
       console.error("Error fetching users:", error);
+
+      let errorMessage = "Error fetching users";
+      if (error.response) {
+        if (error.response.status === 403) {
+          errorMessage = "You don't have admin privileges";
+        } else {
+          errorMessage = error.response.data?.message ||
+            `Server responded with ${error.response.status}`;
+        }
+      } else if (error.request) {
+        errorMessage = "No response from server";
+      }
+
+      setAlert({
+        show: true,
+        message: errorMessage,
+        type: 'error'
+      });
     }
   };
 
@@ -164,7 +204,7 @@ const AdminDashboard = () => {
     setShowStaffForm(false);
     setSelectedType(null);
     setEditSelectedType(null);
-    
+
     // Activate add options
     setShowAddOptions(true);
   };
@@ -178,7 +218,7 @@ const AdminDashboard = () => {
 
   const handleEditClick = () => {
     // Reset all other states
-    setShowChangeTutor(false); 
+    setShowChangeTutor(false);
     setShowAddOptions(false);
     setShowRemoveOptions(false);
     setShowStudentForm(false);
@@ -186,7 +226,7 @@ const AdminDashboard = () => {
     setSelectedType(null);
     setUserToDelete(null);
     setIdentifier('');
-    
+
     // Activate Edit mode
     setEditSelectedType('select');
     setEditIdentifier('');
@@ -202,11 +242,11 @@ const AdminDashboard = () => {
       designation: ''
     });
   };
-  
+
 
   const handleEditSearch = async (e) => {
     e.preventDefault();
-    
+
     if (!editIdentifier.trim()) {
       setAlert({
         show: true,
@@ -215,22 +255,22 @@ const AdminDashboard = () => {
       });
       return;
     }
-  
+
     try {
-      const endpoint = editSelectedType === 'student' 
+      const endpoint = editSelectedType === 'student'
         ? `http://localhost:5000/api/auth/get-student/${editIdentifier}`
         : `http://localhost:5000/api/auth/get-staff/${editIdentifier}`;
-  
+
       const response = await axios.get(endpoint, {
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem("authToken")}` 
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`
         }
       });
-  
+
       if (response.data.success) {
         const userData = response.data.data;
         setEditUserData(userData);
-        
+
         // Set form data based on user type
         if (editSelectedType === 'student') {
           setEditFormData({
@@ -270,7 +310,7 @@ const AdminDashboard = () => {
       });
     }
   };
-  
+
   const handleEditInputChange = (e) => {
     const { name, value } = e.target;
     setEditFormData(prev => ({
@@ -278,32 +318,67 @@ const AdminDashboard = () => {
       [name]: value
     }));
   };
-  
+
+  // Update the handleEditSave function in AdminDashboard.js
   const handleEditSave = async (e) => {
     e.preventDefault();
-    
+    setIsProcessing(true); // Show processing popup
+  
     try {
-      // For staff edits with signature changes
-      if (editSelectedType === 'staff' && (editFormData.signature || editFormData.removeSignature)) {
+      if (editSelectedType === 'student') {
+        // Handle student update
+        const payload = {
+          name: editFormData.name,
+          registerNumber: editFormData.registerNumber,
+          semester: editFormData.semester,
+          tutorName: editFormData.tutorName,
+          email: editFormData.email,
+          ...(editFormData.password && { password: editFormData.password })
+        };
+  
+        const response = await axios.put(
+          `http://localhost:5000/api/auth/update-student/${editUserData._id}`,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+  
+        if (response.data.success) {
+          setIsProcessing(false);
+          setAlert({
+            show: true,
+            message: 'Student updated successfully!',
+            type: 'success'
+          });
+          await fetchUsers();
+          setEditUserData(null);
+          setEditIdentifier('');
+          setEditSelectedType('student');
+        }
+      } else {
+        // Handle staff update (your existing staff update code)
         const formData = new FormData();
         formData.append('name', editFormData.name);
         formData.append('email', editFormData.email);
         formData.append('staffID', editFormData.staffID);
         formData.append('designation', editFormData.designation);
-        
+  
         if (editFormData.password) {
           formData.append('password', editFormData.password);
         }
-        
+  
         if (editFormData.signature) {
           formData.append('signature', editFormData.signature);
         }
-        
+  
         if (editFormData.removeSignature) {
           formData.append('removeSignature', 'true');
         }
   
-        // Call API with FormData
         const response = await axios.put(
           `http://localhost:5000/api/auth/update-staff/${editUserData._id}`,
           formData,
@@ -316,19 +391,20 @@ const AdminDashboard = () => {
         );
   
         if (response.data.success) {
+          setIsProcessing(false);
           setAlert({
             show: true,
-            message: 'Staff updated successfully with signature changes!',
+            message: 'Staff updated successfully!',
             type: 'success'
           });
-          fetchStaffList();
+          await fetchStaffList();
+          setEditUserData(null);
+          setEditIdentifier('');
+          setEditSelectedType('staff');
         }
-        return;
       }
-      
-      // Original save logic for non-file updates
-      setShowSaveConfirmation(true);
     } catch (error) {
+      setIsProcessing(false);
       setAlert({
         show: true,
         message: error.response?.data?.message || 'Error saving changes',
@@ -338,13 +414,14 @@ const AdminDashboard = () => {
   };
 
   const handleConfirmSave = async () => {
+    setIsProcessing(true); // Show processing popup
     setShowSaveConfirmation(false);
-    
+
     try {
-      const endpoint = editSelectedType === 'student' 
+      const endpoint = editSelectedType === 'student'
         ? `http://localhost:5000/api/auth/update-student/${editUserData._id}`
         : `http://localhost:5000/api/auth/update-staff/${editUserData._id}`;
-  
+
       const payload = editSelectedType === 'student' ? {
         name: editFormData.name,
         registerNumber: editFormData.registerNumber,
@@ -359,43 +436,36 @@ const AdminDashboard = () => {
         email: editFormData.email,
         ...(editFormData.password && { password: editFormData.password })
       };
-  
+
       const response = await axios.put(endpoint, payload, {
-        headers: { 
+        headers: {
           Authorization: `Bearer ${localStorage.getItem("authToken")}`,
           'Content-Type': 'application/json'
         }
       });
-  
+
       if (response.data.success) {
+        setIsProcessing(false); // Hide processing popup
         setAlert({
           show: true,
           message: 'User updated successfully!',
           type: 'success'
         });
-        
+
         // Refresh data
         if (editSelectedType === 'student') {
           await fetchUsers();
         } else {
           await fetchStaffList();
         }
-        
-        // Reset form
-        setEditFormData({
-          name: '',
-          registerNumber: '',
-          semester: '',
-          tutorName: '',
-          email: '',
-          password: '',
-          staffID: '',
-          designation: ''
-        });
+
+        // Reset to edit mode after successful update
         setEditUserData(null);
         setEditIdentifier('');
+        setEditSelectedType(editSelectedType); // Keep the same edit type
       }
     } catch (error) {
+      setIsProcessing(false); // Hide processing popup on error
       setAlert({
         show: true,
         message: error.response?.data?.message || 'Failed to update user',
@@ -412,7 +482,7 @@ const AdminDashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (formData.password.length < 8) {
       setAlert({
         show: true,
@@ -421,16 +491,22 @@ const AdminDashboard = () => {
       });
       return;
     }
-  
+
     try {
+      // Find the tutor object to get the name
+      const selectedTutor = staffList.find(staff => staff._id === formData.tutorName);
+      if (!selectedTutor) {
+        throw new Error("Selected tutor not found");
+      }
+
       const response = await axios.post(
         'http://localhost:5000/api/auth/add-student',
         {
           name: formData.name,
           registerNumber: formData.registerNumber,
           password: formData.password,
-          semester:formData.semester,
-          tutorName: formData.tutorName,
+          semester: formData.semester,
+          tutorName: selectedTutor.name, // Send the name instead of ID
           email: formData.email
         },
         {
@@ -440,16 +516,16 @@ const AdminDashboard = () => {
           }
         }
       );
-  
+
       if (response.data.success) {
         setAlert({
           show: true,
           message: `Student ${formData.name} registered successfully!`,
           type: 'success'
         });
-        
+
         setTimeout(() => {
-          setAlert({...alert, show: false});
+          setAlert({ ...alert, show: false });
           setFormData({
             name: '',
             registerNumber: '',
@@ -464,10 +540,10 @@ const AdminDashboard = () => {
         }, 3000);
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.message || 
-                     error.message || 
-                     'Registration failed. Please try again.';
-      
+      const errorMsg = error.response?.data?.message ||
+        error.message ||
+        'Registration failed. Please try again.';
+
       setAlert({
         show: true,
         message: errorMsg,
@@ -476,94 +552,92 @@ const AdminDashboard = () => {
     }
   };
 
-// In your AdminDashboard component, update the handleStaffSubmit function:
-const handleStaffSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (staffFormData.password.length < 8) {
-    setAlert({
-      show: true,
-      message: 'Password must be at least 8 characters',
-      type: 'error'
-    });
-    return;
-  }
+  // In your AdminDashboard component, update the handleStaffSubmit function:
+  const handleStaffSubmit = async (e) => {
+    e.preventDefault();
 
-  try {
-    const formData = new FormData();
-    formData.append('name', staffFormData.name);
-    formData.append('email', staffFormData.email);
-    formData.append('password', staffFormData.password);
-    formData.append('staffID', staffFormData.staffID);
-    formData.append('designation', staffFormData.designation);
-    
-    // Append signature file if exists
-    if (staffFormData.signature) {
-      formData.append('signature', staffFormData.signature);
-    }
-
-    // Log FormData contents for debugging
-    for (let [key, value] of formData.entries()) {
-      console.log(key, value);
-    }
-
-    const response = await axios.post(
-      'http://localhost:5000/api/auth/add-staff',
-      formData,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      }
-    );
-
-    if (response.data.success) {
+    if (staffFormData.password.length < 8) {
       setAlert({
         show: true,
-        message: `Staff ${staffFormData.name} registered successfully!`,
-        type: 'success'
+        message: 'Password must be at least 8 characters',
+        type: 'error'
       });
-      
-      setTimeout(() => {
-        setAlert({...alert, show: false});
-        setStaffFormData({
-          name: '',
-          email: '',
-          password: '',
-          staffID: '',
-          designation: '',
-          signature: null
-        });
-        setShowStaffForm(false);
-        setShowAddOptions(true);
-        fetchStaffList();
-      }, 3000);
+      return;
     }
-  } catch (error) {
-    const errorMsg = error.response?.data?.message || 
-                   error.message || 
-                   'Staff registration failed. Please try again.';
-    
-    setAlert({
-      show: true,
-      message: errorMsg,
-      type: 'error'
-    });
-  }
-};
 
-// Add this new handler for file input
-const handleSignatureUpload = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    setStaffFormData(prev => ({
-      ...prev,
-      signature: file
-    }));
-  }
-};
-  
+    setIsProcessing(true); // Show loading indicator
+
+    try {
+      const formData = new FormData();
+      formData.append('name', staffFormData.name);
+      formData.append('email', staffFormData.email);
+      formData.append('password', staffFormData.password);
+      formData.append('staffID', staffFormData.staffID);
+      formData.append('designation', staffFormData.designation);
+
+      if (staffFormData.signature) {
+        formData.append('signature', staffFormData.signature);
+      }
+
+      const response = await axios.post(
+        'http://localhost:5000/api/auth/add-staff',
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("authToken")}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        setIsProcessing(false); // Hide loading indicator
+        setAlert({
+          show: true,
+          message: `Staff ${staffFormData.name} registered successfully!`,
+          type: 'success'
+        });
+
+        setTimeout(() => {
+          setAlert({ ...alert, show: false });
+          setStaffFormData({
+            name: '',
+            email: '',
+            password: '',
+            staffID: '',
+            designation: '',
+            signature: null
+          });
+          setShowStaffForm(false);
+          setShowAddOptions(true);
+          fetchStaffList();
+        }, 3000);
+      }
+    } catch (error) {
+      setIsProcessing(false); // Hide loading indicator on error
+      const errorMsg = error.response?.data?.message ||
+        error.message ||
+        'Staff registration failed. Please try again.';
+
+      setAlert({
+        show: true,
+        message: errorMsg,
+        type: 'error'
+      });
+    }
+  };
+
+  // Add this new handler for file input
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setStaffFormData(prev => ({
+        ...prev,
+        signature: file
+      }));
+    }
+  };
+
   const handleStaffInputChange = (e) => {
     const { name, value } = e.target;
     setStaffFormData(prev => ({
@@ -583,7 +657,7 @@ const handleSignatureUpload = (e) => {
 
   const handleTutorSearch = async (e) => {
     e.preventDefault();
-    
+
     try {
       const response = await axios.post(
         'http://localhost:5000/api/auth/get-students-by-range',
@@ -597,7 +671,7 @@ const handleSignatureUpload = (e) => {
           }
         }
       );
-      
+
       if (response.data.success) {
         setSelectedStudents(response.data.students);
         setChangeTutorStep(2);
@@ -626,16 +700,16 @@ const handleSignatureUpload = (e) => {
           }
         }
       );
-      
+
       console.log("Full response:", response); // Add this line
-      
+
       if (response.data.success) {
         setAlert({
           show: true,
           message: response.data.message || 'Tutor changed successfully!',
           type: 'success'
         });
-        
+
         // Reset form
         setChangeTutorStep(1);
         setFromRegister('');
@@ -653,7 +727,7 @@ const handleSignatureUpload = (e) => {
     } catch (error) {
       console.error("Full error:", error); // Add this line
       console.error("Error response data:", error.response?.data); // Add this line
-      
+
       setAlert({
         show: true,
         message: error.response?.data?.message || 'Error changing tutor',
@@ -670,7 +744,7 @@ const handleSignatureUpload = (e) => {
     setShowStudentForm(false);
     setShowStaffForm(false);
     setSelectedType(null);
-    
+
     // Activate Change Tutor mode
     setShowChangeTutor(true);
     setChangeTutorStep(1);
@@ -691,34 +765,34 @@ const handleSignatureUpload = (e) => {
     setUserToBeDeleted(user);
     setShowDeleteConfirmation(true);
   };
-  
+
   const handleConfirmDelete = async () => {
     if (!userToBeDeleted) return;
-    
+
     try {
-      const endpoint = selectedType === 'student' 
+      const endpoint = selectedType === 'student'
         ? `http://localhost:5000/api/auth/remove-student/${userToBeDeleted._id}`
         : `http://localhost:5000/api/auth/remove-staff/${userToBeDeleted._id}`;
-  
+
       const response = await axios.delete(endpoint, {
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem("authToken")}` 
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`
         }
       });
-  
+
       if (response.data.success) {
         setAlert({
           show: true,
           message: `${selectedType === 'student' ? 'Student' : 'Staff'} deleted successfully!`,
           type: 'success'
         });
-        
+
         // Reset states
         setUserToDelete(null);
         setUserToBeDeleted(null);
         setIdentifier('');
         setShowDeleteConfirmation(false);
-        
+
         // Refresh data
         fetchUsers();
         fetchStaffList();
@@ -734,31 +808,31 @@ const handleSignatureUpload = (e) => {
 
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
-  
+
     try {
-      const endpoint = selectedType === 'student' 
+      const endpoint = selectedType === 'student'
         ? `http://localhost:5000/api/auth/remove-student/${userToDelete._id}`
         : `http://localhost:5000/api/auth/remove-staff/${userToDelete._id}`;
-  
+
       const response = await axios.delete(endpoint, {
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem("authToken")}` 
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`
         }
       });
-  
+
       if (response.data.success) {
         setAlert({
           show: true,
           message: `${selectedType === 'student' ? 'Student' : 'Staff'} deleted successfully!`,
           type: 'success'
         });
-        
+
         // Reset states
         setUserToDelete(null);
         setIdentifier('');
         setSelectedType(null);
         setShowRemoveOptions(true);
-        
+
         // Refresh data
         fetchUsers();
         fetchStaffList();
@@ -771,10 +845,10 @@ const handleSignatureUpload = (e) => {
       });
     }
   };
-  
+
   const handleSearchUserToDelete = async (e) => {
     e.preventDefault();
-    
+
     if (!identifier.trim()) {
       setAlert({
         show: true,
@@ -783,18 +857,18 @@ const handleSignatureUpload = (e) => {
       });
       return;
     }
-  
+
     try {
-      const endpoint = selectedType === 'student' 
+      const endpoint = selectedType === 'student'
         ? `http://localhost:5000/api/auth/get-student/${identifier}`
         : `http://localhost:5000/api/auth/get-staff/${identifier}`;
-  
+
       const response = await axios.get(endpoint, {
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem("authToken")}` 
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("authToken")}`
         }
       });
-  
+
       if (response.data.success) {
         setUserToDelete(response.data.data);
         // Don't show success alert here - just set the user data
@@ -826,8 +900,8 @@ const handleSignatureUpload = (e) => {
       <div className="flex flex-1">
         {/* Sidebar */}
         <aside className={`bg-white p-4 shadow-md flex flex-col justify-between ${isCollapsed ? 'w-20' : 'w-52'} transition-all relative`}>
-          <button 
-            onClick={() => setIsCollapsed(!isCollapsed)} 
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
             className="absolute -right-3 top-4 bg-white border border-gray-300 rounded-full p-1 shadow-md hover:bg-gray-100 transition-colors"
           >
             {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
@@ -835,7 +909,7 @@ const handleSignatureUpload = (e) => {
 
           <div className="mt-8">
             <nav className="space-y-4">
-              <div 
+              <div
                 onClick={handleAddClick}
                 className="flex items-center p-2 rounded-md text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
               >
@@ -843,20 +917,20 @@ const handleSignatureUpload = (e) => {
                 {!isCollapsed && <span className="ml-3">Add</span>}
               </div>
 
-              <div 
+              <div
                 onClick={() => {
                   // Reset all edit states
                   setEditSelectedType(null);
                   setEditUserData(null);
                   setEditIdentifier('');
-                  
+
                   // Reset other section states
                   setShowAddOptions(false);
                   setShowStudentForm(false);
                   setShowStaffForm(false);
                   setShowChangeTutor(false);
                   setSelectedType(null);
-                  
+
                   // Activate remove options
                   setShowRemoveOptions(true);
                 }}
@@ -867,7 +941,7 @@ const handleSignatureUpload = (e) => {
               </div>
 
               {/* Edit Button - Paste your code here */}
-              <div 
+              <div
                 onClick={handleEditClick}
                 className="flex items-center p-2 rounded-md text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
               >
@@ -875,7 +949,7 @@ const handleSignatureUpload = (e) => {
                 {!isCollapsed && <span className="ml-3">Edit</span>}
               </div>
 
-              <div 
+              <div
                 onClick={handleChangeTutor}
                 className="flex items-center p-2 rounded-md text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
               >
@@ -903,14 +977,14 @@ const handleSignatureUpload = (e) => {
                     />
                   </div>
                   <div className="min-w-0 overflow-hidden">
-                    <div 
+                    <div
                       className="text-sm font-medium text-gray-700"
                       data-tooltip-id="name-tooltip"
                       data-tooltip-content={localStorage.getItem("userName") || "John Doe"}
                     >
                       {localStorage.getItem("userName") || "John Doe"}
                     </div>
-                    <div 
+                    <div
                       className="text-xs text-gray-500 truncate"
                       data-tooltip-id="email-tooltip"
                       data-tooltip-content={localStorage.getItem("userEmail") || "johndoe@gmail.com"}
@@ -931,410 +1005,420 @@ const handleSignatureUpload = (e) => {
 
         {/* Main Content */}
         <main className="flex-1 p-6 bg-gray-100">
-        {alert.show && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 999
-          }}>
-            <Popup 
-              message={alert.message} 
-              isSuccess={alert.type === 'success'} 
-              onClose={() => setAlert({...alert, show: false}) }
-            />
-          </div>
-        )}
+          {alert.show && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 999
+            }}>
+              <Popup
+                message={alert.message}
+                isSuccess={alert.type === 'success'}
+                onClose={() => setAlert({ ...alert, show: false })}
+              />
+            </div>
+          )}
           {showChangeTutor ? (
-              <div className="max-w-3xl mx-auto">   
-                <div className="bg-white rounded-xl shadow-lg p-8 relative top-15">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-6">
-                    Tutor Change Form
-                  </h1>   
+            <div className="max-w-3xl mx-auto">
+              <div className="bg-white rounded-xl shadow-lg p-8 relative top-15">
+                <h1 className="text-2xl font-bold text-gray-800 mb-6">
+                  Tutor Change Form
+                </h1>
 
-                  {changeTutorStep === 1 && (
-                    <form onSubmit={handleTutorSearch} className="space-y-6">
-                      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                        <div>
-                          <label htmlFor="fromRegister" className="block text-sm font-medium text-gray-700 mb-1">
-                            From Register Number
-                          </label>
-                          <input
-                            type="text"
-                            id="fromRegister"
-                            value={fromRegister}
-                            onChange={(e) => setFromRegister(e.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            required
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="toRegister" className="block text-sm font-medium text-gray-700 mb-1">
-                            To Register Number
-                          </label>
-                          <input
-                            type="text"
-                            id="toRegister"
-                            value={toRegister}
-                            onChange={(e) => setToRegister(e.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            required
-                            autoComplete="off"
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="submit"
-                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                      >
-                        <Search className="w-5 h-5 inline mr-2" />
-                        Search Students
-                      </button>
-                    </form>
-                  )}
-
-                  {changeTutorStep === 2 && (
-                    <div className="space-y-6">
-                      <div className="overflow-hidden rounded-lg border border-gray-200">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Register Number
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Name
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Current Tutor
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {selectedStudents.map((student) => (
-                              <tr key={student._id}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {student.registerNumber}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {student.name}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                  {student.tutorName || 'Not assigned'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="relative">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Select New Tutor *</label>
-                        <select
-                          value={selectedTutor}
-                          onChange={(e) => setSelectedTutor(e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                {changeTutorStep === 1 && (
+                  <form onSubmit={handleTutorSearch} className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="fromRegister" className="block text-sm font-medium text-gray-700 mb-1">
+                          From Register Number
+                        </label>
+                        <input
+                          type="text"
+                          id="fromRegister"
+                          value={fromRegister}
+                          onChange={(e) => setFromRegister(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           required
-                        >
-                          <option value="">Select Tutor</option>
-                          {staffList.map((tutor) => (
-                            <option key={tutor._id} value={tutor._id}>
-                              {tutor.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 mt-6">
-                          <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                          </svg>
-                        </div>
+                          autoComplete="off"
+                        />
                       </div>
-                      <button
-                        onClick={() => setChangeTutorStep(3)}
-                        disabled={!selectedTutor}
-                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <UserPlus className="w-5 h-5 inline mr-2" />
-                        Proceed to Confirmation
-                      </button>
+                      <div>
+                        <label htmlFor="toRegister" className="block text-sm font-medium text-gray-700 mb-1">
+                          To Register Number
+                        </label>
+                        <input
+                          type="text"
+                          id="toRegister"
+                          value={toRegister}
+                          onChange={(e) => setToRegister(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          required
+                          autoComplete="off"
+                        />
+                      </div>
                     </div>
-                  )}
+                    <button
+                      type="submit"
+                      className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      <Search className="w-5 h-5 inline mr-2" />
+                      Search Students
+                    </button>
+                  </form>
+                )}
 
-                  {changeTutorStep === 3 && (
-                    <div className="space-y-6">
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <h3 className="text-lg font-medium text-yellow-800 mb-2">Confirmation</h3>
-                        <p className="text-yellow-700">
-                          You are about to change the tutor for {selectedStudents.length} students to{' '}
-                          <span className="font-medium">
-                            {staffList.find(t => t._id === selectedTutor)?.name || selectedTutor}
-                          </span>. This action cannot be undone.
-                        </p>
-                      </div>
-                      <button
-                        onClick={handleConfirmTutorChange}
-                        className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                      >
-                        Confirm Tutor Change
-                      </button>
+                {changeTutorStep === 2 && (
+                  <div className="space-y-6">
+                    <div className="overflow-hidden rounded-lg border border-gray-200">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Register Number
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Name
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Current Tutor
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {selectedStudents.map((student) => (
+                            <tr key={student._id}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {student.registerNumber}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {student.name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {student.tutorName || 'Not assigned'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
-                </div>
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Select New Tutor *</label>
+                      <select
+                        value={selectedTutor}
+                        onChange={(e) => setSelectedTutor(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                        required
+                      >
+                        <option value="">Select Tutor</option>
+                        {staffList.map((tutor) => (
+                          <option key={tutor._id} value={tutor._id}>
+                            {tutor.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 mt-6">
+                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                          <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setChangeTutorStep(3)}
+                      disabled={!selectedTutor}
+                      className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      <UserPlus className="w-5 h-5 inline mr-2" />
+                      Proceed to Confirmation
+                    </button>
+                  </div>
+                )}
+
+                {changeTutorStep === 3 && (
+                  <div className="space-y-6">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <h3 className="text-lg font-medium text-yellow-800 mb-2">Confirmation</h3>
+                      <p className="text-yellow-700">
+                        You are about to change the tutor for {selectedStudents.length} students to{' '}
+                        <span className="font-medium">
+                          {staffList.find(t => t._id === selectedTutor)?.name || selectedTutor}
+                        </span>. This action cannot be undone.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleConfirmTutorChange}
+                      className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Confirm Tutor Change
+                    </button>
+                  </div>
+                )}
               </div>
-            ):editSelectedType ? (
-              <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
-                <div className="max-w-4xl w-full">
-                  {editSelectedType === 'select' ? (
-                    <>
-                      <div className="text-center mb-10">
-                        <h1 className="text-3xl font-bold text-gray-800 mb-2">Edit User</h1>
-                        <p className="text-gray-600">Choose an option to edit user details</p>
-                      </div>
-                      
-                      <div className="grid md:grid-cols-2 gap-6">
-                        <button 
-                          className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group border border-gray-200"
-                          onClick={() => setEditSelectedType('student')}
-                        >
-                          <div className="flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 mx-auto group-hover:bg-blue-200">
-                            <GraduationCap className="w-8 h-8 text-blue-600" />
-                          </div>
-                          <h2 className="text-xl font-semibold text-gray-800 mb-2">Edit Student</h2>
-                          <p className="text-gray-600">Update student details and academic information</p>
-                        </button>
-                        
-                        <button 
-                          className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group border border-gray-200"
-                          onClick={() => setEditSelectedType('staff')}
-                        >
-                          <div className="flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4 mx-auto group-hover:bg-indigo-200">
-                            <Users className="w-8 h-8 text-indigo-600" />
-                          </div>
-                          <h2 className="text-xl font-semibold text-gray-800 mb-2">Edit Staff</h2>
-                          <p className="text-gray-600">Update staff member details and role information</p>
-                        </button>
-                      </div>
-                    </>
-                  ) : !editUserData ? (
-                    <div className="max-w-2xl mx-auto">
-                      <button
-                        onClick={() => {
-                          setEditSelectedType('select');
-                          setEditIdentifier('');
-                          setEditUserData(null);
-                        }}
-                        className="flex items-center text-gray-600 hover:text-gray-800 mb-14 transition-colors"
-                      >
-                        <ArrowLeft className="w-5 h-5 mr-2" />
-                        Back to options
-                      </button>
-            
-                      <div className="bg-white rounded-xl shadow-lg p-8 relative -top-10">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-                          Edit {editSelectedType === 'student' ? 'Student' : 'Staff Member'}
-                        </h2>
-            
-                        <form onSubmit={handleEditSearch} className="space-y-6">
-                          <div>
-                            <label htmlFor="editIdentifier" className="block text-sm font-medium text-gray-700 mb-5">
-                              Enter {editSelectedType === 'student' ? 'Register Number' : 'Staff ID'}
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                id="editIdentifier"
-                                name="editIdentifier"
-                                value={editIdentifier}
-                                onChange={(e) => setEditIdentifier(e.target.value)}
-                                className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                required
-                                autoComplete="off"
-                                placeholder={`Enter ${editSelectedType === 'student' ? 'student register number' : 'staff ID'}`}
-                              />
-                              <Search className="absolute right-4 top-2.5 h-5 w-5 text-gray-400" />
-                            </div>
-                          </div>
-            
-                          <button
-                            type="submit"
-                            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                          >
-                            Search User
-                          </button>
-                        </form>
-                      </div>
+            </div>
+          ) : editSelectedType ? (
+            <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
+              <div className="max-w-4xl w-full">
+                {editSelectedType === 'select' ? (
+                  <>
+                    <div className="text-center mb-10">
+                      <h1 className="text-3xl font-bold text-gray-800 mb-2">Edit User</h1>
+                      <p className="text-gray-600">Choose an option to edit user details</p>
                     </div>
-                  ) : (
-                    <div className="max-w-4xl mx-auto">
+
+                    <div className="grid md:grid-cols-2 gap-6">
                       <button
-                        onClick={() => {
-                          setEditUserData(null);
-                          setEditIdentifier('');
-                        }}
-                        className="flex items-center text-gray-600 hover:text-gray-800 mb-14 transition-colors"
+                        className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group border border-gray-200"
+                        onClick={() => setEditSelectedType('student')}
                       >
-                        <ArrowLeft className="w-5 h-5 mr-2" />
-                        Back to search
+                        <div className="flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4 mx-auto group-hover:bg-blue-200">
+                          <GraduationCap className="w-8 h-8 text-blue-600" />
+                        </div>
+                        <h2 className="text-xl font-semibold text-gray-800 mb-2">Edit Student</h2>
+                        <p className="text-gray-600">Update student details and academic information</p>
                       </button>
-            
-                      <div className="bg-white rounded-xl shadow-lg p-8 relative -top-10">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-                          Edit {editSelectedType === 'student' ? 'Student' : 'Staff Member'}
-                        </h2>
-            
-                        <div className="mt-8">
-                          <form onSubmit={handleEditSave} className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {/* Left Column */}
-                              <div className="space-y-4">
+
+                      <button
+                        className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group border border-gray-200"
+                        onClick={() => setEditSelectedType('staff')}
+                      >
+                        <div className="flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4 mx-auto group-hover:bg-indigo-200">
+                          <Users className="w-8 h-8 text-indigo-600" />
+                        </div>
+                        <h2 className="text-xl font-semibold text-gray-800 mb-2">Edit Staff</h2>
+                        <p className="text-gray-600">Update staff member details and role information</p>
+                      </button>
+                    </div>
+                  </>
+                ) : !editUserData ? (
+                  <div className="max-w-2xl mx-auto">
+                    <button
+                      onClick={() => {
+                        setEditSelectedType('select');
+                        setEditIdentifier('');
+                        setEditUserData(null);
+                      }}
+                      className="flex items-center text-gray-600 hover:text-gray-800 mb-14 transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 mr-2" />
+                      Back to options
+                    </button>
+
+                    <div className="bg-white rounded-xl shadow-lg p-8 relative -top-10">
+                      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                        Edit {editSelectedType === 'student' ? 'Student' : 'Staff Member'}
+                      </h2>
+
+                      <form onSubmit={handleEditSearch} className="space-y-6">
+                        <div>
+                          <label htmlFor="editIdentifier" className="block text-sm font-medium text-gray-700 mb-5">
+                            Enter {editSelectedType === 'student' ? 'Register Number' : 'Staff ID'}
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              id="editIdentifier"
+                              name="editIdentifier"
+                              value={editIdentifier}
+                              onChange={(e) => setEditIdentifier(e.target.value)}
+                              className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required
+                              autoComplete="off"
+                              placeholder={`Enter ${editSelectedType === 'student' ? 'student register number' : 'staff ID'}`}
+                            />
+                            <Search className="absolute right-4 top-2.5 h-5 w-5 text-gray-400" />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                          Search User
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-4xl mx-auto">
+                    <button
+                      onClick={() => {
+                        setEditUserData(null);
+                        setEditIdentifier('');
+                      }}
+                      className="flex items-center text-gray-600 hover:text-gray-800 mb-14 transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 mr-2" />
+                      Back to search
+                    </button>
+
+                    <div className="bg-white rounded-xl shadow-lg p-8 relative -top-10">
+                      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                        Edit {editSelectedType === 'student' ? 'Student' : 'Staff Member'}
+                      </h2>
+
+                      <div className="mt-8">
+                        <form onSubmit={handleEditSave} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Left Column */}
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                <input
+                                  type="text"
+                                  name="name"
+                                  value={editFormData.name}
+                                  onChange={handleEditInputChange}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  required
+                                  autoComplete="off"
+                                />
+                              </div>
+
+                              {editSelectedType === 'student' ? (
+                                <>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Register Number</label>
+                                    <input
+                                      type="text"
+                                      name="registerNumber"
+                                      value={editFormData.registerNumber}
+                                      onChange={handleEditInputChange}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      required
+                                      autoComplete="off"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
+                                    <select
+                                      name="semester"
+                                      value={editFormData.semester}
+                                      onChange={handleEditInputChange}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      required
+                                      autoComplete="off"
+                                    >
+                                      {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                                        <option key={sem} value={sem}>Semester {sem}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Staff ID</label>
+                                    <input
+                                      type="text"
+                                      name="staffID"
+                                      value={editFormData.staffID}
+                                      onChange={handleEditInputChange}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      required
+                                      autoComplete="off"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
+                                    <select
+                                      name="designation"
+                                      value={editFormData.designation}
+                                      onChange={handleEditInputChange}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                      required
+                                      autoComplete="off"
+                                    >
+                                      <option value="">Select Designation</option>
+                                      <option value="Professor">Professor</option>
+                                      <option value="Associate Professor">Associate Professor</option>
+                                      <option value="Assistant Professor">Assistant Professor</option>
+                                    </select>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Right Column */}
+                            <div className="space-y-4">
+                              {editSelectedType === 'student' ? (
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Tutor</label>
                                   <input
                                     type="text"
-                                    name="name"
-                                    value={editFormData.name}
-                                    onChange={handleEditInputChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    required
-                                    autoComplete="off"
+                                    value={editUserData.tutorName || 'Not assigned'}
+                                    readOnly
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                                   />
                                 </div>
-            
-                                {editSelectedType === 'student' ? (
-                                  <>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Register Number</label>
-                                      <input
-                                        type="text"
-                                        name="registerNumber"
-                                        value={editFormData.registerNumber}
-                                        onChange={handleEditInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                        required
-                                        autoComplete="off"
-                                      />
-                                    </div>
-            
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
-                                      <select
-                                        name="semester"
-                                        value={editFormData.semester}
-                                        onChange={handleEditInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                        required
-                                        autoComplete="off"
-                                      >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
-                                          <option key={sem} value={sem}>Semester {sem}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Staff ID</label>
-                                      <input
-                                        type="text"
-                                        name="staffID"
-                                        value={editFormData.staffID}
-                                        onChange={handleEditInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                        required
-                                        autoComplete="off"
-                                      />
-                                    </div>
-            
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Designation</label>
-                                      <select
-                                        name="designation"
-                                        value={editFormData.designation}
-                                        onChange={handleEditInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                        required
-                                        autoComplete="off"
-                                      >
-                                        <option value="">Select Designation</option>
-                                        <option value="Professor">Professor</option>
-                                        <option value="Associate Professor">Associate Professor</option>
-                                        <option value="Assistant Professor">Assistant Professor</option>
-                                      </select>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-            
-                              {/* Right Column */}
-                              <div className="space-y-4">
-                                {editSelectedType === 'student' ? (
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Current Tutor</label>
-                                    <input
-                                      type="text"
-                                      value={editUserData.tutorName || 'Not assigned'}
-                                      readOnly
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                    <input
-                                      type="text"
-                                      value="Computer Science and Engineering"
-                                      readOnly
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                                    />
-                                  </div>
-                                )}
-            
+                              ) : (
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                                   <input
-                                    type="email"
-                                    name="email"
-                                    value={editFormData.email}
-                                    onChange={handleEditInputChange}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    required
-                                    autoComplete="off"
+                                    type="text"
+                                    value="Computer Science and Engineering"
+                                    readOnly
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                                   />
                                 </div>
+                              )}
+
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                  type="email"
+                                  name="email"
+                                  value={editFormData.email}
+                                  onChange={handleEditInputChange}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  required
+                                  autoComplete="off"
+                                />
                               </div>
                             </div>
+                          </div>
 
-                              {/* PASTE THE SIGNATURE UPLOAD SECTION HERE */}
-                              {editUserData?.signature?.url && (
-                                <div className="mt-4">
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Signature</label>
-                                  <div className="flex items-center">
-                                    <img 
-                                      src={editUserData.signature.url} 
-                                      alt="Current signature" 
-                                      className="h-16 w-auto border border-gray-300 rounded"
+                          {/* PASTE THE SIGNATURE UPLOAD SECTION HERE */}
+                          {editSelectedType === 'staff' && (
+                            <div className="mt-6 border-t pt-6">
+                              <h3 className="text-lg font-medium text-gray-800 mb-4">Signature</h3>
+
+                              {/* Show current signature only if it exists AND we're not removing it */}
+                              {/* Show current signature only if it exists AND we're not removing it */}
+                              {editUserData?.signature?.url && !editFormData.removeSignature && !editFormData.signature && (
+                                <div className="mb-4">
+                                  <p className="text-sm font-medium text-gray-700 mb-2">Current Signature:</p>
+                                  <div className="flex items-center space-x-4">
+                                    <img
+                                      src={editUserData.signature.url}
+                                      alt="Current signature"
+                                      className="h-20 w-auto border border-gray-300 rounded-md object-contain"
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setEditFormData(prev => ({
-                                          ...prev,
-                                          removeSignature: true
-                                        }));
-                                      }}
-                                      className="ml-2 text-red-600 hover:text-red-800"
+                                      onClick={() => setEditFormData(prev => ({
+                                        ...prev,
+                                        removeSignature: true,
+                                        signature: null // Explicitly clear any new signature
+                                      }))}
+                                      className="text-red-600 hover:text-red-800 flex items-center"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 className="w-4 h-4 mr-1" />
+                                      Remove Signature
                                     </button>
                                   </div>
                                 </div>
                               )}
 
-                              {(!editUserData?.signature?.url || editFormData.removeSignature) && (
+                              {/* Show upload field if:
+                                    - There's no current signature OR
+                                    - We're removing the current signature OR
+                                    - We've selected a new signature */}
+                              {(!editUserData?.signature?.url || editFormData.removeSignature || editFormData.signature) && (
                                 <div className="mt-4">
                                   <label className="block text-sm font-medium text-gray-700 mb-1">
                                     {editFormData.removeSignature ? 'Upload New Signature' : 'Signature Upload'}
@@ -1344,28 +1428,29 @@ const handleSignatureUpload = (e) => {
                                       <span className="text-sm font-medium text-gray-700">
                                         {editFormData.signature ? editFormData.signature.name : 'Choose file'}
                                       </span>
-                                      <input 
-                                        type="file" 
-                                        className="hidden" 
+                                      <input
+                                        type="file"
+                                        className="hidden"
                                         accept="image/*"
                                         onChange={(e) => {
                                           if (e.target.files[0]) {
                                             setEditFormData(prev => ({
                                               ...prev,
                                               signature: e.target.files[0],
-                                              removeSignature: false
+                                              removeSignature: false // Clear remove flag when new file is selected
                                             }));
                                           }
                                         }}
                                       />
                                     </label>
                                     {editFormData.signature && (
-                                      <button 
+                                      <button
                                         type="button"
-                                        onClick={() => setEditFormData(prev => ({ 
-                                          ...prev, 
+                                        onClick={() => setEditFormData(prev => ({
+                                          ...prev,
                                           signature: null,
-                                          removeSignature: true
+                                          // Only set removeSignature if there was an original signature
+                                          removeSignature: !!editUserData?.signature?.url
                                         }))}
                                         className="ml-2 text-red-600 hover:text-red-800"
                                       >
@@ -1378,23 +1463,25 @@ const handleSignatureUpload = (e) => {
                                   </p>
                                 </div>
                               )}
-            
-                            <button
-                              type="submit"
-                              className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6 flex items-center justify-center"
-                            >
-                              <Save className="w-5 h-5 mr-2" />
-                              Save Changes
-                            </button>
-                          </form>
-                        </div>
+                            </div>
+                          )}
+
+                          <button
+                            type="submit"
+                            className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6 flex items-center justify-center"
+                          >
+                            <Save className="w-5 h-5 mr-2" />
+                            Save Changes
+                          </button>
+                        </form>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            ): showStudentForm ? (
-              <div className="flex items-center justify-center py-8">
+            </div>
+          ) : showStudentForm ? (
+            <div className="flex items-center justify-center py-8">
               <div className="w-full max-w-4xl mx-4 mt-0">
                 <button
                   onClick={handleBackToOptions}
@@ -1403,22 +1490,184 @@ const handleSignatureUpload = (e) => {
                   <ArrowLeft className="w-5 h-5 mr-2" />
                   Back to options
                 </button>
-                
+
                 <div className="bg-white rounded-xl shadow-lg p-6">
                   <h2 className="text-2xl font-bold text-gray-800 mb-4">Student Registration</h2>
-                  
+
                   <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Column 1 */}
-                    <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Column 1 */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                          <input
+                            type="text"
+                            name="name"
+                            autoComplete="off"
+                            value={formData.name}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                            minLength={3}
+                            maxLength={50}
+                            pattern="[A-Za-z ]+"
+                            title="Only alphabetic characters allowed"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Register Number *</label>
+                          <input
+                            type="text"
+                            name="registerNumber"
+                            autoComplete="off"
+                            value={formData.registerNumber}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                            pattern="[A-Za-z0-9]+"
+                            title="Alphanumeric characters only"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Semester *</label>
+                          <select
+                            name="semester"
+                            value={formData.semester}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                          >
+                            <option value="">Select Semester</option>
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                              <option key={sem} value={sem}>Semester {sem}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Column 2 */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Tutor *</label>
+                          <select
+                            name="tutorName"
+                            value={formData.tutorName}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                            disabled={loadingStaff || fetchError}
+                          >
+                            <option value="">Select Tutor</option>
+                            {staffList.map((staff) => (
+                              <option key={staff._id} value={staff._id}>
+                                {staff.name}
+                              </option>
+                            ))}
+                          </select>
+                          {alert.show && (
+                            <div style={{
+                              position: 'fixed',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              backgroundColor: 'rgba(0,0,0,0.5)',
+                              zIndex: 999
+                            }}>
+                              <Popup
+                                message={alert.message}
+                                isSuccess={alert.type === 'success'}
+                                onClose={() => setAlert({ ...alert, show: false })}
+                              />
+                            </div>
+                          )}
+
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                          <input
+                            type="email"
+                            name="email"
+                            autoComplete="off"
+                            value={formData.email}  // Changed from formData to studentFormData
+                            onChange={handleInputChange}  // Changed from handleInputChange
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                            pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
+                            title="Enter a valid email address"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                          <input
+                            type="password"
+                            name="password"
+                            autoComplete="new-password"
+                            value={formData.password}
+                            onChange={handleInputChange}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            required
+                            minLength={8}
+                            pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"
+                            title="Must contain at least one uppercase, one lowercase, and one number"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Minimum 8 characters with at least one uppercase, one lowercase, and one number
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6 disabled:opacity-50"
+                      disabled={isProcessing || loadingStaff}
+                    >
+                      {isProcessing || loadingStaff ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Registering Student...
+                        </>
+                      ) : (
+                        'Register Student'
+                      )}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          ) : showStaffForm ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-full max-w-4xl mx-4 mt-0">
+                <button
+                  onClick={handleBackToOptions}
+                  className="flex items-center text-gray-600 hover:text-gray-800 mb-4 transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5 mr-2" />
+                  Back to options
+                </button>
+
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-4">Staff Registration</h2>
+
+                  <form onSubmit={handleStaffSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Full Name */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
                         <input
                           type="text"
                           name="name"
                           autoComplete="off"
-                          value={formData.name}
-                          onChange={handleInputChange}
+                          value={staffFormData.name}
+                          onChange={handleStaffInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           required
                           minLength={3}
@@ -1428,14 +1677,32 @@ const handleSignatureUpload = (e) => {
                         />
                       </div>
 
+                      {/* Designation */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Register Number *</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Designation *</label>
+                        <select
+                          name="designation"
+                          value={staffFormData.designation}
+                          onChange={handleStaffInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          required
+                        >
+                          <option value="">Select Designation</option>
+                          <option value="Professor">Professor</option>
+                          <option value="Associate Professor">Associate Professor</option>
+                          <option value="Assistant Professor">Assistant Professor</option>
+                        </select>
+                      </div>
+
+                      {/* Staff ID */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Staff ID *</label>
                         <input
                           type="text"
-                          name="registerNumber"
+                          name="staffID"
                           autoComplete="off"
-                          value={formData.registerNumber}
-                          onChange={handleInputChange}
+                          value={staffFormData.staffID}
+                          onChange={handleStaffInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           required
                           pattern="[A-Za-z0-9]+"
@@ -1443,62 +1710,19 @@ const handleSignatureUpload = (e) => {
                         />
                       </div>
 
+                      {/* Department */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Semester *</label>
-                        <select
-                          name="semester"
-                          value={formData.semester}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          required
-                        >
-                          <option value="">Select Semester</option>
-                          {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
-                            <option key={sem} value={sem}>Semester {sem}</option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
+                        <input
+                          type="text"
+                          name="department"
+                          value="Computer Science and Engineering"
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                        />
                       </div>
-                    </div>
 
-                    {/* Column 2 */}
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Tutor *</label>
-                        <select
-                          name="tutorName"
-                          value={formData.tutorName}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          required
-                          disabled={loadingStaff || fetchError}
-                        >
-                          <option value="">Select Tutor</option>
-                          {staffList.map((staff) => (
-                            <option key={staff._id} value={staff._id}>
-                              {staff.name}
-                            </option>
-                          ))}
-                        </select>
-                        {alert.show && (
-                        <div style={{
-                          position: 'fixed',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: 'rgba(0,0,0,0.5)',
-                          zIndex: 999
-                        }}>
-                          <Popup 
-                            message={alert.message} 
-                            isSuccess={alert.type === 'success'} 
-                            onClose={() => setAlert({...alert, show: false})} 
-                          />
-                        </div>
-                      )}
-                        
-                      </div>
-                      
+                      {/* Email */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                         <input
@@ -1509,19 +1733,20 @@ const handleSignatureUpload = (e) => {
                           onChange={handleStaffInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           required
-                          pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                          pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
                           title="Enter a valid email address"
                         />
                       </div>
 
+                      {/* Password */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
                         <input
                           type="password"
                           name="password"
                           autoComplete="new-password"
-                          value={formData.password}
-                          onChange={handleInputChange}
+                          value={staffFormData.password}
+                          onChange={handleStaffInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           required
                           minLength={8}
@@ -1532,192 +1757,85 @@ const handleSignatureUpload = (e) => {
                           Minimum 8 characters with at least one uppercase, one lowercase, and one number
                         </p>
                       </div>
-                    </div>
-                  </div>
 
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6 disabled:opacity-50"
-                    disabled={loadingStaff || fetchError}
-                  >
-                    {loadingStaff ? 'Loading...' : 'Register Student'}
-                  </button>
-                </form>
+                      {/* Signature Upload */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Signature Upload</label>
+
+                        {/* Signature Preview */}
+                        {staffFormData.signature && (
+                          <div className="mb-4">
+                            <div className="flex items-center space-x-4">
+                              {typeof staffFormData.signature === 'string' ? (
+                                // If signature is a URL (existing signature)
+                                <img
+                                  src={staffFormData.signature}
+                                  alt="Current signature"
+                                  className="h-20 w-auto border border-gray-300 rounded-md object-contain"
+                                />
+                              ) : (
+                                // If signature is a File object (new upload)
+                                <img
+                                  src={URL.createObjectURL(staffFormData.signature)}
+                                  alt="Signature preview"
+                                  className="h-20 w-auto border border-gray-300 rounded-md object-contain"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Upload Section */}
+                        <div className="flex items-center">
+                          <label className="flex flex-col items-center px-4 py-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
+                            <span className="text-sm font-medium text-gray-700">
+                              {staffFormData.signature ? 'Change file' : 'Choose file'}
+                            </span>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={handleSignatureUpload}
+                            />
+                          </label>
+                          {staffFormData.signature && (
+                            <button
+                              type="button"
+                              onClick={() => setStaffFormData(prev => ({ ...prev, signature: null }))}
+                              className="ml-2 text-red-600 hover:text-red-800"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Upload a clear image of the staff member's signature (JPG, PNG)
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6"
+                    >
+                      Register Staff
+                    </button>
+                  </form>
+
                 </div>
               </div>
             </div>
-            ): showStaffForm ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-full max-w-4xl mx-4 mt-0">
-                  <button
-                    onClick={handleBackToOptions}
-                    className="flex items-center text-gray-600 hover:text-gray-800 mb-4 transition-colors"
-                  >
-                    <ArrowLeft className="w-5 h-5 mr-2" />
-                    Back to options
-                  </button>
-                  
-                  <div className="bg-white rounded-xl shadow-lg p-6">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-4">Staff Registration</h2>
-                    
-                    <form onSubmit={handleStaffSubmit} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Left Column */}
-                        <div className="space-y-4">
-                          {/* Full Name */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                            <input
-                              type="text"
-                              name="name"
-                              autoComplete="off"
-                              value={staffFormData.name}
-                              onChange={handleStaffInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              required
-                              minLength={3}
-                              maxLength={50}
-                              pattern="[A-Za-z ]+"
-                              title="Only alphabetic characters allowed"
-                            />
-                          </div>
-            
-                          {/* Staff ID */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Staff ID *</label>
-                            <input
-                              type="text"
-                              name="staffID"
-                              autoComplete="off"
-                              value={staffFormData.staffID}
-                              onChange={handleStaffInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              required
-                              pattern="[A-Za-z0-9]+"
-                              title="Alphanumeric characters only"
-                            />
-                          </div>
-            
-                          {/* Department (fixed value) */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
-                            <input
-                              type="text"
-                              name="department"
-                              value="Computer Science and Engineering"
-                              readOnly
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                            />
-                          </div>
-                        </div>
-            
-                        {/* Right Column */}
-                        <div className="space-y-4">
-                          {/* Designation */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Designation *</label>
-                            <select
-                              name="designation"
-                              value={staffFormData.designation}
-                              onChange={handleStaffInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              required
-                            >
-                              <option value="">Select Designation</option>
-                              <option value="Professor">Professor</option>
-                              <option value="Associate Professor">Associate Professor</option>
-                              <option value="Assistant Professor">Assistant Professor</option>
-                            </select>
-                          </div>
-            
-                          {/* Email */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                            <input
-                              type="email"
-                              name="email"
-                              autoComplete="off"
-                              value={staffFormData.email}
-                              onChange={handleStaffInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              required
-                              pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
-                              title="Enter a valid email address"
-                            />
-                          </div>
-            
-                          {/* Password */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                            <input
-                              type="password"
-                              name="password"
-                              autoComplete="new-password"
-                              value={staffFormData.password}
-                              onChange={handleStaffInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              required
-                              minLength={8}
-                              pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$"
-                              title="Must contain at least one uppercase, one lowercase, and one number"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">
-                              Minimum 8 characters with at least one uppercase, one lowercase, and one number
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Signature Upload</label>
-                      <div className="flex items-center">
-                        <label className="flex flex-col items-center px-4 py-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
-                          <span className="text-sm font-medium text-gray-700">
-                            {staffFormData.signature ? staffFormData.signature.name : 'Choose file'}
-                          </span>
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*"
-                            onChange={handleSignatureUpload}
-                          />
-                        </label>
-                        {staffFormData.signature && (
-                          <button 
-                            type="button"
-                            onClick={() => setStaffFormData(prev => ({ ...prev, signature: null }))}
-                            className="ml-2 text-red-600 hover:text-red-800"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Upload a clear image of the staff member's signature (JPG, PNG)
-                      </p>
-                    </div>
-            
-                      <button
-                        type="submit"
-                        className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-6"
-                      >
-                        Register Staff
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            ) : showAddOptions ? (
+          ) : showAddOptions ? (
             <div className="min-h-[calc(100vh-120px)] flex items-center justify-center">
               <div className="max-w-4xl w-full">
                 <div className="text-center mb-10">
                   <h1 className="text-3xl font-bold text-gray-800 mb-2">User Management</h1>
                   <p className="text-gray-600">Choose an option to add a new user to the system</p>
                 </div>
-                
+
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Add Student Card */}
-                  <button 
+                  <button
                     className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group"
                     onClick={handleStudentClick}
                   >
@@ -1729,7 +1847,7 @@ const handleSignatureUpload = (e) => {
                   </button>
 
                   {/* Add Staff Card */}
-                  <button 
+                  <button
                     className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group"
                     onClick={handleStaffClick}
                   >
@@ -1749,10 +1867,10 @@ const handleSignatureUpload = (e) => {
                   <h1 className="text-3xl font-bold text-gray-800 mb-2">User Removal</h1>
                   <p className="text-gray-600">Select an option to remove a user from the system</p>
                 </div>
-                
+
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Remove Student Card */}
-                  <button 
+                  <button
                     className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group"
                     onClick={() => {
                       setSelectedType('student');
@@ -1771,7 +1889,7 @@ const handleSignatureUpload = (e) => {
                   </button>
 
                   {/* Remove Staff Card */}
-                  <button 
+                  <button
                     className="bg-white rounded-xl shadow-lg p-6 transition duration-300 hover:shadow-xl hover:scale-105 group"
                     onClick={() => {
                       setSelectedType('staff');
@@ -1791,7 +1909,7 @@ const handleSignatureUpload = (e) => {
                 </div>
               </div>
             </div>
-          ): selectedType ? (
+          ) : selectedType ? (
             <div className="max-w-2xl mx-auto">
               <button
                 onClick={() => {
@@ -1847,12 +1965,12 @@ const handleSignatureUpload = (e) => {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="text-sm text-gray-600">Name:</div>
                         <div className="text-sm font-medium">{userToDelete.name}</div>
-                        
+
                         {selectedType === 'student' ? (
                           <>
                             <div className="text-sm text-gray-600">Register Number:</div>
                             <div className="text-sm font-medium">{userToDelete.registerNumber}</div>
-                            
+
                             <div className="text-sm text-gray-600">Semester:</div>
                             <div className="text-sm font-medium">{userToDelete.semester}</div>
 
@@ -1863,7 +1981,7 @@ const handleSignatureUpload = (e) => {
                           <>
                             <div className="text-sm text-gray-600">Staff ID:</div>
                             <div className="text-sm font-medium">{userToDelete.staffID}</div>
-                            
+
                             <div className="text-sm text-gray-600">Designation:</div>
                             <div className="text-sm font-medium">{userToDelete.designation}</div>
 
@@ -1871,7 +1989,7 @@ const handleSignatureUpload = (e) => {
                             <div className="text-sm font-medium">{userToDelete.department}</div>
                           </>
                         )}
-                        
+
                         <div className="text-sm text-gray-600">Email:</div>
                         <div className="text-sm font-medium">{userToDelete.email}</div>
                       </div>
@@ -1888,7 +2006,7 @@ const handleSignatureUpload = (e) => {
                 )}
               </div>
             </div>
-          ):null}
+          ) : null}
 
           {alert.show && (
             <div style={{
@@ -1900,127 +2018,128 @@ const handleSignatureUpload = (e) => {
               backgroundColor: 'rgba(0,0,0,0.5)',
               zIndex: 999
             }}>
-              <Popup 
-                message={alert.message} 
-                isSuccess={alert.type === 'success'} 
-                onClose={() => setAlert({...alert, show: false})}
+              <Popup
+                message={alert.message}
+                isSuccess={alert.type === 'success'}
+                onClose={() => setAlert({ ...alert, show: false })}
               />
             </div>
           )}
-        {showDeleteConfirmation && userToBeDeleted && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 999
-          }}>
+          {showDeleteConfirmation && userToBeDeleted && (
             <div style={{
               position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '5px',
-              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-              maxWidth: '500px',
-              width: '90%'
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 999
             }}>
-              <h3 style={{ marginTop: 0, color: '#333' }}>Confirm Deletion</h3>
-              <p style={{ color: '#666' }}>
-                Are you sure you want to delete {userToBeDeleted.name}? This action cannot be undone.
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button
-                  onClick={() => setShowDeleteConfirmation(false)}
-                  style={{
-                    padding: '8px 16px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    marginRight: '10px',
-                    cursor: 'pointer',
-                    backgroundColor: 'transparent'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#f44336',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Delete
-                </button>
+              <div style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: 'white',
+                padding: '20px',
+                borderRadius: '5px',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                maxWidth: '500px',
+                width: '90%'
+              }}>
+                <h3 style={{ marginTop: 0, color: '#333' }}>Confirm Deletion</h3>
+                <p style={{ color: '#666' }}>
+                  Are you sure you want to delete {userToBeDeleted.name}? This action cannot be undone.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button
+                    onClick={() => setShowDeleteConfirmation(false)}
+                    style={{
+                      padding: '8px 16px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      marginRight: '10px',
+                      cursor: 'pointer',
+                      backgroundColor: 'transparent'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        {showSaveConfirmation && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 999
-          }}>
+          )}
+          {isProcessing && <ProcessingPopup />}
+          {showSaveConfirmation && (
             <div style={{
               position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '5px',
-              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-              maxWidth: '500px',
-              width: '90%'
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 999
             }}>
-              <h3 style={{ marginTop: 0, color: '#333' }}>Confirm Changes</h3>
-              <p style={{ color: '#666' }}>
-                Are you sure you want to save these changes?
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <button
-                  onClick={() => setShowSaveConfirmation(false)}
-                  style={{
-                    padding: '8px 16px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    marginRight: '10px',
-                    cursor: 'pointer',
-                    backgroundColor: 'transparent'
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmSave}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#4CAF50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Save Changes
-                </button>
+              <div style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: 'white',
+                padding: '20px',
+                borderRadius: '5px',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                maxWidth: '500px',
+                width: '90%'
+              }}>
+                <h3 style={{ marginTop: 0, color: '#333' }}>Confirm Changes</h3>
+                <p style={{ color: '#666' }}>
+                  Are you sure you want to save these changes?
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button
+                    onClick={() => setShowSaveConfirmation(false)}
+                    style={{
+                      padding: '8px 16px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      marginRight: '10px',
+                      cursor: 'pointer',
+                      backgroundColor: 'transparent'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmSave}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Save Changes
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
         </main>
       </div>
     </div>

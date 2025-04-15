@@ -7,38 +7,27 @@ const dotenv = require("dotenv");
 const User = require("../models/User");
 const OTP = require("../models/Otp");
 const Staff = require("../models/Staff");
+const Invitation = require('../models/Invitation'); // Adjust path as needed
+const OdRequest = require("../models/OdRequest");
 const Admin = require("../models/Admin");
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const Event = require('../models/Event');
 const cloudinary = require('cloudinary').v2;
-const Invitation = require('../models/Invitation');
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 dotenv.config();
 const router = express.Router();
 
-// 🔹 Configure Nodemailer
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Generate a unique request ID
+const generateRequestId = () => {
+  const prefix = "OD";
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}${timestamp}${random}`;
+};
 
-cloudinary.config({ 
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-  api_key: process.env.CLOUDINARY_API_KEY, 
-  api_secret: process.env.CLOUDINARY_API_SECRET 
-});
 
-// 🔹 Generate and Hash OTP
-const generateOtp = () => crypto.randomInt(100000, 999999).toString();
-// Configure storage for uploaded files
-
-// 🔹 Send response notification email
 const sendResponseNotificationEmail = async (invitation) => {
   try {
     const mailOptions = {
@@ -99,6 +88,49 @@ const sendResponseNotificationEmail = async (invitation) => {
   }
 };
 
+// 🔹 Configure Nodemailer
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+cloudinary.config({ 
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
+  api_key: process.env.CLOUDINARY_API_KEY, 
+  api_secret: process.env.CLOUDINARY_API_SECRET 
+});
+
+// 🔹 Generate and Hash OTP
+const generateOtp = () => crypto.randomInt(100000, 999999).toString();
+// Configure storage for uploaded files
+
+// 🔹 Authentication Middleware
+const authenticate = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false,
+        message: "Authorization token required" 
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.error("Authentication error:", error);
+    res.status(401).json({ 
+      success: false,
+      message: "Invalid or expired token" 
+    });
+  }
+};
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = path.join(__dirname, '../uploads');
@@ -112,23 +144,6 @@ const storage = multer.diskStorage({
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
-
-// Add this middleware function at the top of your file
-const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: "Authorization token required" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // Attach user data to request
-    next();
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
-};
 
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
@@ -147,13 +162,290 @@ const upload = multer({
   }
 });
 
+router.get("/search-students", async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query || query.length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 3 characters"
+      });
+    }
+
+    // Search by name or register number
+    const students = await User.find({
+      $or: [
+        { name: { $regex: query, $options: 'i' } },
+        { registerNumber: { $regex: query, $options: 'i' } }
+      ]
+    }).select('name registerNumber semester tutorName email');
+
+    res.status(200).json({
+      success: true,
+      students
+    });
+  } catch (error) {
+    console.error("Student search error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error searching students"
+    });
+  }
+});
+
+router.post('/send-invitation', authenticate, async (req, res) => {
+  try {
+    console.log('Received invitation request body:', req.body);
+
+    // Validate required fields
+    const requiredFields = [
+      'odRequestId',
+      'registerNumber',
+      'recipientEmail',
+      'eventName',
+      'fromDate',
+      'toDate',
+      'requesterName',
+      'requesterEmail'
+    ];
+
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    
+    if (missingFields.length > 0) {
+      console.error('Missing fields:', missingFields);
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+        missingFields
+      });
+    }
+
+    // Verify student exists
+    const student = await User.findOne({ registerNumber: req.body.registerNumber });
+    if (!student) {
+      console.error('Student not found:', req.body.registerNumber);
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found with this register number'
+      });
+    }
+
+    // Create new invitation
+    const invitation = new Invitation({
+      odRequestId: req.body.odRequestId,
+      registerNumber: req.body.registerNumber,
+      recipientEmail: req.body.recipientEmail,
+      eventName: req.body.eventName,
+      fromDate: req.body.fromDate,
+      toDate: req.body.toDate,
+      requesterName: req.body.requesterName,
+      requesterEmail: req.body.requesterEmail,
+      status: 'pending'
+    });
+
+    await invitation.save();
+
+    // Get tutor name from the requester's user record
+    const requester = await User.findOne({ email: req.body.requesterEmail }).select('tutorName');
+    const tutorName = requester?.tutorName || "the tutor";
+
+    // Send email notification
+// In your send-invitation route
+const mailOptions = {
+  from: `"OD System" <${process.env.EMAIL_USER}>`,
+  to: req.body.recipientEmail,
+  subject: `OD Request Invitation from ${req.body.requesterName}`,
+  html: `
+    <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
+      <!-- Outer Email Container -->
+      <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; 
+                  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: left;">
+        
+        <!-- Logo -->
+        <div style="text-align: center; margin-bottom: 20px;">
+          <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 100px;">
+        </div>
+        
+        <!-- Header Text -->
+        <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 10px; text-align: center;">OD Request Invitation</h2>
+        
+        <!-- Body Text -->
+        <p style="font-size: 15px; color: #333333; margin-bottom: 15px; text-align: center;">
+          You've been invited by ${req.body.requesterName} to join an OD request for<br>
+          <span style="font-size: 14px;">${req.body.eventName}</span>
+        </p>
+        
+        <!-- Button Container -->
+        <div style="margin: 25px 0; text-align: center;">
+          <a href="http://localhost:5000/api/auth/respond-invitation?token=${invitation._id}&response=accept" 
+            style="display: inline-block; padding: 12px 25px; background-color: #4CAF50; color: white; 
+                    text-decoration: none; margin-right: 15px; border-radius: 4px; font-weight: 500;
+                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);">
+            Accept
+          </a>
+          <a href="http://localhost:5000/api/auth/respond-invitation?token=${invitation._id}&response=decline" 
+            style="display: inline-block; padding: 12px 25px; background-color: #f44336; color: white; 
+                    text-decoration: none; border-radius: 4px; font-weight: 500;
+                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);">
+            Decline
+          </a>
+        </div>
+        
+        <!-- Footer -->
+        <div style="margin-top: 30px; font-size: 12px; color: #888888; text-align: center;">
+          <p>This is an automated message. Please do not reply directly to this email.</p>
+          <p>– ODCSE Support</p>
+        </div>
+      </div>
+    </div>
+  `
+};
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({
+      success: true,
+      message: 'Invitation sent successfully',
+      invitationId: invitation._id
+    });
+
+  } catch (error) {
+    console.error('Error in send-invitation:', {
+      message: error.message,
+      stack: error.stack,
+      requestBody: req.body
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process invitation',
+      error: process.env.NODE_ENV === 'development' ? {
+        message: error.message,
+        stack: error.stack
+      } : undefined
+    });
+  }
+});
+
+router.get('/respond-invitation', async (req, res) => {
+  try {
+    const { token, response } = req.query;
+    
+    if (!token || !response || !['accept', 'decline'].includes(response)) {
+      return res.redirect(`${process.env.FRONTEND_URL}/invitation-response?error=invalid_params`);
+    }
+
+    const invitation = await Invitation.findById(token);
+    if (!invitation) {
+      return res.redirect(`${process.env.FRONTEND_URL}/invitation-response?error=not_found`);
+    }
+
+    if (invitation.status !== 'pending') {
+      return res.redirect(`${process.env.FRONTEND_URL}/invitation-response?error=already_responded`);
+    }
+
+    // Get student details to include in the response
+    const student = await User.findOne({ registerNumber: invitation.registerNumber })
+      .select('name semester section attendancePercentage')
+      .lean();
+
+    if (response === 'accept') {
+      invitation.status = 'accepted';
+      invitation.respondedAt = new Date();
+      await invitation.save();
+      
+      // Redirect with success and accepted response
+      return res.redirect(`${process.env.FRONTEND_URL}/invitation-response?success=true&response=accepted`);
+    } else {
+      // If declined, delete the invitation
+      await Invitation.findByIdAndDelete(token);
+      return res.redirect(`${process.env.FRONTEND_URL}/invitation-response?success=true&response=declined`);
+    }
+
+  } catch (error) {
+    console.error('Error in respond-invitation:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/invitation-response?error=server_error`);
+  }
+});
+
+// Check invitation statuses with tutor verification
+router.get('/check-invitations', authenticate, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    
+    const invitations = await Invitation.find({
+      $or: [
+        { requesterEmail: userEmail },
+        { recipientEmail: userEmail }
+      ],
+      status: { $in: ['pending', 'accepted'] } // Only include pending or accepted
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+    // Get student details for each invitation
+    const invitationsWithDetails = await Promise.all(invitations.map(async inv => {
+      const student = await User.findOne({ registerNumber: inv.registerNumber })
+        .select('name semester section attendancePercentage')
+        .lean();
+      
+      return {
+        ...inv,
+        name: student?.name || inv.name || '',
+        semester: student?.semester || inv.semester || '',
+        section: student?.section || '',
+        attendancePercentage: student?.attendancePercentage || ''
+      };
+    }));
+
+    res.status(200).json({
+      success: true,
+      invitations: invitationsWithDetails
+    });
+  } catch (error) {
+    console.error('Error checking invitations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check invitations'
+    });
+  }
+});
+
+// Cancel invitation route
+router.delete('/cancel-invitation/:id', authenticate, async (req, res) => {
+  try {
+    const invitation = await Invitation.findByIdAndDelete(req.params.id);
+    
+    if (!invitation) {
+      return res.status(404).json({
+        success: false,
+        message: "Invitation not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Invitation cancelled successfully"
+    });
+
+  } catch (error) {
+    console.error("Error cancelling invitation:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel invitation"
+    });
+  }
+});
+
 
 // ✅ Create Event with File Upload
 router.post('/add-events', upload.single('file'), async (req, res) => {
+  let tempFilePath = req.file?.path;
+  
   try {
     const { name, description, venue, registrationStart, registrationEnd } = req.body;
     
-    // Validate required fields
     if (!name || !description || !venue || !registrationStart || !registrationEnd || !req.file) {
       return res.status(400).json({ 
         success: false,
@@ -161,39 +453,53 @@ router.post('/add-events', upload.single('file'), async (req, res) => {
       });
     }
 
-    // Upload file to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: 'event-posters', // Optional folder in Cloudinary
-      resource_type: 'auto' // Automatically detect image or other file types
+    // Validate description length
+    if (description.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description cannot exceed 1000 characters'
+      });
+    }
+
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(tempFilePath, {
+      folder: 'event-posters',
+      resource_type: 'auto'
     });
 
-    // Delete the temporary file
-    fs.unlinkSync(req.file.path);
-
-    // Validate registration dates
+    // Validate dates
     const startDate = new Date(registrationStart);
     const endDate = new Date(registrationEnd);
     if (endDate <= startDate) {
+      // Clean up Cloudinary upload if date validation fails
+      await cloudinary.uploader.destroy(result.public_id);
       return res.status(400).json({
         success: false,
         message: 'Registration end date must be after start date'
       });
     }
 
-    // Create and save event with Cloudinary URL
+    // Create event
     const newEvent = new Event({
       name,
-      description,
-      venue, // Added venue field
+      description: description.substring(0, 1000), // Ensure length
+      venue,
       registrationStart,
       registrationEnd,
       fileName: req.file.originalname,
-      filePath: result.secure_url, // Store the Cloudinary URL
+      filePath: result.secure_url,
       fileType: req.file.mimetype,
-      cloudinaryPublicId: result.public_id // Store for future management
+      cloudinaryPublicId: result.public_id
     });
 
     const savedEvent = await newEvent.save();
+
+    // Delete temp file only after everything succeeds
+    if (tempFilePath) {
+      fs.unlink(tempFilePath, (err) => {
+        if (err) console.error('Temp file deletion error:', err);
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -204,10 +510,18 @@ router.post('/add-events', upload.single('file'), async (req, res) => {
   } catch (error) {
     console.error('Error in event creation:', error);
     
-    // Clean up uploaded file if exists
-    if (req.file) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error deleting uploaded file:', err);
+    // Clean up in reverse order (Cloudinary first, then local file)
+    if (error.result?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(error.result.public_id);
+      } catch (cloudinaryErr) {
+        console.error('Cloudinary cleanup error:', cloudinaryErr);
+      }
+    }
+
+    if (tempFilePath) {
+      fs.unlink(tempFilePath, (err) => {
+        if (err) console.error('Temp file cleanup error:', err);
       });
     }
 
@@ -401,54 +715,41 @@ router.post("/forgot-password", async (req, res) => {
     );
 
     // Send OTP via email
-// Send OTP via email
-const mailOptions = {
-  from: `"ODCSE Support" <${process.env.EMAIL_USER}>`,
-  to: email,
-  subject: "Verify Your OTP",
-  text: `Below is your one-time passcode: ${otp}`,
-  html: `
-    <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
-      <!-- Outer Email Container -->
-      <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; 
-                  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: center;">
-        
-        <!-- Logo -->
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 110px;">
+    const mailOptions = {
+      from: `"ODCSE Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Verify Your OTP",
+      text: `Below is your one-time passcode: ${otp}`,
+      html: `
+        <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
+          <!-- Outer Email Container -->
+          <div style="max-width: 400px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 5px; 
+                      box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: center;">
+            <!-- Logo -->
+            <div style="text-align: center; margin-bottom: 20px;">
+              <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 110px;">
+            </div>
+            <!-- Header Text -->
+            <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 10px;">Your OTP</h2>
+            <!-- Body Text -->
+            <p style="font-size: 16px; color: #333333; margin-bottom: 20px;">
+              Below is your one-time passcode
+            </p>
+            <!-- OTP (Centered and Spaced Out) -->
+            <p style="font-size: 24px; font-weight: bold; color: #000000; text-align: center; letter-spacing: 8px; margin: 0;">
+              ${otp.toString().split("").join(" ")}
+            </p>
+            <!-- Help Text -->
+            <p style="font-size: 14px; color: #666666; margin-top: 20px;">
+              This OTP is valid for 5 minutes and should not be shared with anyone. 
+              If you did not request this OTP, please ignore this email.
+            </p>
+            <!-- Footer -->
+            <p style="font-size: 14px; color: #888888; margin-top: 20px;">– ODCSE Support</p>
+          </div>
         </div>
-        
-        <!-- Header Text -->
-        <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 20px;">Your OTP Code</h2>
-        
-        <!-- Main Content -->
-        <p style="font-size: 15px; color: #333333; margin-bottom: 15px;">
-          Please use the OTP below to proceed. This code is valid for <strong>5 minutes</strong>.
-        </p>
-        
-        <!-- OTP Box -->
-        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-size: 20px; 
-                    font-weight: bold; color: #000000; letter-spacing: 7px;">
-          ${otp.toString().split("").join(" ")}
-        </div>
-
-        
-        <!-- Help Text -->
-        <p style="font-size: 14px; color: #888888; margin-top: 20px;">
-          If you did not request this OTP, you can safely ignore this email.
-        </p>
-        
-        <!-- Footer -->
-        <div style="border-top: 1px solid #e0e0e0; margin-top: 30px; padding-top: 20px;">
-          <p style="font-size: 12px; color: #aaaaaa;">© 2025 ODCSE Support. All rights reserved.</p>
-        </div>
-      </div>
-    </div>
-  `,
-};
-
-
-
+      `,
+    };
     await transporter.sendMail(mailOptions);
     console.log(`OTP sent to ${email}: ${otp}`); // Debugging log
 
@@ -616,8 +917,8 @@ router.post("/add-student", async (req, res) => {
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    // 2️⃣ Find tutor in STAFF collection (not User)
-    const tutor = await Staff.findById(tutorName).select("name");
+    // 2️⃣ Find tutor in STAFF collection - using name instead of ID
+    const tutor = await Staff.findOne({ name: tutorName }).select("name");
     if (!tutor) {
       return res.status(404).json({ message: "Tutor not found in staff records" });
     }
@@ -626,12 +927,12 @@ router.post("/add-student", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 4️⃣ Save student with tutor's NAME (not ID)
+    // 4️⃣ Save student with tutor's NAME
     const newStudent = new User({
       name,
       registerNumber,
       semester: parseInt(semester),
-      tutorName: tutor.name, // ✅ Now stores NAME, not ID
+      tutorName: tutor.name,
       email,
       password: hashedPassword,
       role: "user",
@@ -655,26 +956,48 @@ router.post("/add-student", async (req, res) => {
   }
 });
 
+// In your backend routes file
+// Get all users (Admin only)
+router.get("/admin/users", authenticate, async (req, res) => {
+  try {
+    // Verify admin role
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ 
+        success: false,
+        message: "Unauthorized: Admin access required" 
+      });
+    }
+
+    const users = await User.find({})
+      .select('-password -__v')
+      .sort({ registerNumber: 1 });
+
+    res.status(200).json({
+      success: true,
+      users
+    });
+
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Error fetching users",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // ✅ Add Staff (Admin Only)
 // authRoutes.js
-// routes/auth.js
+// Update the route to handle file uploads
 router.post("/add-staff", upload.single('signature'), async (req, res) => {
   try {
-    console.log('Request body:', req.body); // Log the parsed body
-    console.log('Request file:', req.file); // Log the uploaded file
-
+    // Get text fields from req.body and file from req.file
     const { name, email, password, staffID, designation } = req.body;
     const department = "Computer Science and Engineering";
     
-    // Validate input
+    // Validate input (make signature optional)
     if (!name || !email || !password || !staffID || !designation) {
-      console.log('Missing fields:', {
-        name: !!name,
-        email: !!email,
-        password: !!password,
-        staffID: !!staffID,
-        designation: !!designation
-      });
       return res.status(400).json({
         success: false,
         message: "All fields are required"
@@ -693,24 +1016,21 @@ router.post("/add-staff", upload.single('signature'), async (req, res) => {
       });
     }
 
-    // Upload signature to Cloudinary if exists
+    // Handle signature file if uploaded
     let signatureData = null;
     if (req.file) {
+      // Upload to Cloudinary
       const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'staff-signatures',
-        transformation: [
-          { width: 300, height: 100, crop: "limit" },
-          { quality: "auto:good" }
-        ]
+        folder: 'staff-signatures'
       });
+      
+      // Delete the temporary file
+      fs.unlinkSync(req.file.path);
       
       signatureData = {
         public_id: result.public_id,
         url: result.secure_url
       };
-
-      // Delete the temporary file
-      fs.unlinkSync(req.file.path);
     }
 
     // Create new staff
@@ -746,7 +1066,7 @@ router.post("/add-staff", upload.single('signature'), async (req, res) => {
         if (err) console.error('Error deleting uploaded file:', err);
       });
     }
-
+    
     res.status(500).json({ 
       success: false,
       message: "Internal server error"
@@ -996,7 +1316,7 @@ router.post("/change-tutor", async (req, res) => {
       html: `
         <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
           <!-- Outer Email Container -->
-          <div style="max-width: 500px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; 
+          <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; 
                       box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: left;">
             
             <!-- Logo -->
@@ -1012,24 +1332,9 @@ router.post("/change-tutor", async (req, res) => {
               You have been assigned as the tutor for the following students:
             </p>
             
-            <!-- Student List Table -->
-            <div style="overflow-x: auto;">
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 15px;">
-                <thead>
-                  <tr style="background-color: #f0f0f0;">
-                    <th style="padding: 10px; border-bottom: 1px solid #ddd; text-align: left;">Register Number</th>
-                    <th style="padding: 10px; border-bottom: 1px solid #ddd; text-align: left;">Name</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${studentsToUpdate.map((student) => `
-                    <tr>
-                      <td style="padding: 8px; border-bottom: 1px solid #ddd;">${student.registerNumber}</td>
-                      <td style="padding: 8px; border-bottom: 1px solid #ddd;">${student.name}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
+            <!-- Student List Container -->
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 15px; font-size: 15px; color: #000000;">
+              ${studentList}
             </div>
             
             <!-- Additional Information -->
@@ -1049,8 +1354,6 @@ router.post("/change-tutor", async (req, res) => {
         </div>
       `
     };
-    
-    
 
     // Send email in background (don't wait for response)
     transporter.sendMail(mailOptions, (error, info) => {
@@ -1084,13 +1387,87 @@ router.post("/change-tutor", async (req, res) => {
 });
 
 // ✅ Update Student (Admin Only)
-// Update the edit staff route
+router.put("/update-student/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, registerNumber, semester, email } = req.body;
+
+    // 1️⃣ Find the student
+    const student = await User.findById(id);
+    if (!student) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Student not found" 
+      });
+    }
+
+    // 2️⃣ Check for duplicate registerNumber or email
+    if (registerNumber && registerNumber !== student.registerNumber) {
+      const regNumberExists = await User.findOne({ registerNumber });
+      if (regNumberExists) {
+        return res.status(400).json({ 
+          success: false,
+          message: "Register number already in use by another student" 
+        });
+      }
+    }
+
+    if (email && email !== student.email) {
+      const emailExists = await User.findOne({ email });
+      if (emailExists) {
+        return res.status(400).json({ 
+          success: false,
+          message: "Email already in use by another student" 
+        });
+      }
+    }
+
+    // 3️⃣ Update fields
+    student.name = name || student.name;
+    student.registerNumber = registerNumber || student.registerNumber;
+    student.semester = semester || student.semester;
+    student.email = email || student.email;
+
+    // 4️⃣ Explicitly prevent password updates
+    if (req.body.password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password cannot be updated through this endpoint"
+      });
+    }
+
+    // 5️⃣ Save updated student
+    await student.save();
+
+    // 6️⃣ Prepare response without sensitive data
+    const studentResponse = student.toObject();
+    delete studentResponse.password;
+    delete studentResponse.__v;
+
+    res.status(200).json({
+      success: true,
+      message: "Student updated successfully",
+      data: studentResponse
+    });
+
+  } catch (error) {
+    console.error("Student update error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Internal server error",
+      error: error.message 
+    });
+  }
+});
+
+// ✅ Update Staff (Admin Only)
+// Update the backend route in your authRoutes.js
 router.put("/update-staff/:id", upload.single('signature'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, staffID, designation, removeSignature } = req.body;
-
-    // Find the staff
+    
+    // Find the staff member
     const staff = await Staff.findById(id);
     if (!staff) {
       return res.status(404).json({ 
@@ -1099,49 +1476,46 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
       });
     }
 
-    // Handle signature removal if requested
-    if (removeSignature === 'true' && staff.signature?.public_id) {
-      await cloudinary.uploader.destroy(staff.signature.public_id);
-      staff.signature = null;
-    }
-
-    // Handle new signature upload
-    if (req.file) {
-      // Delete old signature if exists
-      if (staff.signature?.public_id) {
-        await cloudinary.uploader.destroy(staff.signature.public_id);
-      }
-
-      // Upload new signature
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'staff-signatures',
-        transformation: [
-          { width: 300, height: 100, crop: "limit" },
-          { quality: "auto:good" }
-        ]
-      });
-      
-      staff.signature = {
-        public_id: result.public_id,
-        url: result.secure_url
-      };
-
-      // Delete the temporary file
-      fs.unlinkSync(req.file.path);
-    }
-
-    // Update other fields
+    // Update fields
     staff.name = name || staff.name;
     staff.email = email || staff.email;
     staff.staffID = staffID || staff.staffID;
     staff.designation = designation || staff.designation;
 
-    // Update password if provided
+    // Handle password update if provided
     if (req.body.password) {
       const salt = await bcrypt.genSalt(10);
       staff.password = await bcrypt.hash(req.body.password, salt);
     }
 
+    // Handle signature updates
+    if (req.file) {
+      // If there's an existing signature, delete it from Cloudinary first
+      if (staff.signature?.public_id) {
+        await cloudinary.uploader.destroy(staff.signature.public_id);
+      }
+      
+      // Upload new signature to Cloudinary
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: 'staff-signatures'
+      });
+      
+      // Delete the temporary file
+      fs.unlinkSync(req.file.path);
+      
+      staff.signature = {
+        public_id: result.public_id,
+        url: result.secure_url
+      };
+    } else if (removeSignature === 'true') {
+      // Remove existing signature if requested
+      if (staff.signature?.public_id) {
+        await cloudinary.uploader.destroy(staff.signature.public_id);
+        staff.signature = null;
+      }
+    }
+
+    // Save updated staff
     await staff.save();
 
     // Prepare response without sensitive data
@@ -1164,7 +1538,7 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
         if (err) console.error('Error deleting uploaded file:', err);
       });
     }
-
+    
     res.status(500).json({ 
       success: false,
       message: "Internal server error",
@@ -1172,7 +1546,6 @@ router.put("/update-staff/:id", upload.single('signature'), async (req, res) => 
     });
   }
 });
-
 
 // ✅ Get Students by Tutor Name (protected route)
 router.get("/students-by-tutor", async (req, res) => {
@@ -1223,351 +1596,7 @@ router.get("/students-by-tutor", async (req, res) => {
   }
 });
 
-router.get("/students/:registerNumber", async (req, res) => {
-  try {
-    const student = await User.findOne({ 
-      registerNumber: req.params.registerNumber 
-    }).select('-password -__v');
-    
-    if (!student) {
-      return res.status(404).json({ 
-        success: false,
-        message: "Student not found" 
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      data: student
-    });
-    
-  } catch (error) {
-    console.error('Error fetching student:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Server error while fetching student'
-    });
-  }
-});
 
-// ✅ Search Students
-router.get("/search-students", async (req, res) => {
-  try {
-    const { query } = req.query;
-    
-    if (!query || query.length < 3) {
-      return res.status(400).json({
-        success: false,
-        message: "Search query must be at least 3 characters"
-      });
-    }
-
-    // Search by name or register number
-    const students = await User.find({
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { registerNumber: { $regex: query, $options: 'i' } }
-      ]
-    }).select('name registerNumber semester tutorName email');
-
-    res.status(200).json({
-      success: true,
-      students
-    });
-  } catch (error) {
-    console.error("Student search error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error searching students"
-    });
-  }
-});
-
-router.post('/send-invitation', authenticate, async (req, res) => {
-  try {
-    console.log('Received invitation request body:', req.body);
-
-    // Validate required fields
-    const requiredFields = [
-      'odRequestId',
-      'registerNumber',
-      'recipientEmail',
-      'eventName',
-      'fromDate',
-      'toDate',
-      'requesterName',
-      'requesterEmail'
-    ];
-
-    const missingFields = requiredFields.filter(field => !req.body[field]);
-    
-    if (missingFields.length > 0) {
-      console.error('Missing fields:', missingFields);
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields',
-        missingFields
-      });
-    }
-
-    // Verify student exists
-    const student = await User.findOne({ registerNumber: req.body.registerNumber });
-    if (!student) {
-      console.error('Student not found:', req.body.registerNumber);
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found with this register number'
-      });
-    }
-
-    // Create new invitation
-    const invitation = new Invitation({
-      odRequestId: req.body.odRequestId,
-      registerNumber: req.body.registerNumber,
-      recipientEmail: req.body.recipientEmail,
-      eventName: req.body.eventName,
-      fromDate: req.body.fromDate,
-      toDate: req.body.toDate,
-      requesterName: req.body.requesterName,
-      requesterEmail: req.body.requesterEmail,
-      status: 'pending'
-    });
-
-    await invitation.save();
-
-    // Get tutor name from the requester's user record
-    const requester = await User.findOne({ email: req.body.requesterEmail }).select('tutorName');
-    const tutorName = requester?.tutorName || "the tutor";
-
-    // Send email notification
-// In your send-invitation route
-const mailOptions = {
-  from: `"OD System" <${process.env.EMAIL_USER}>`,
-  to: req.body.recipientEmail,
-  subject: `OD Request Invitation from ${req.body.requesterName}`,
-  html: `
-    <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
-      <!-- Outer Email Container -->
-      <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; 
-                  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: left;">
-        
-        <!-- Logo -->
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 100px;">
-        </div>
-        
-        <!-- Header Text -->
-        <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 10px; text-align: center;">OD Request Invitation</h2>
-        
-        <!-- Body Text -->
-        <p style="font-size: 15px; color: #333333; margin-bottom: 15px; text-align: center;">
-          You've been invited by ${req.body.requesterName} to join an OD request for<br>
-          <span style="font-size: 14px;">${req.body.eventName}</span>
-        </p>
-        
-        <!-- Button Container -->
-        <div style="margin: 25px 0; text-align: center;">
-          <a href="http://localhost:5000/api/auth/respond-invitation?token=${invitation._id}&response=accept" 
-            style="display: inline-block; padding: 12px 25px; background-color: #4CAF50; color: white; 
-                    text-decoration: none; margin-right: 15px; border-radius: 4px; font-weight: 500;
-                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);">
-            Accept
-          </a>
-          <a href="http://localhost:5000/api/auth/respond-invitation?token=${invitation._id}&response=decline" 
-            style="display: inline-block; padding: 12px 25px; background-color: #f44336; color: white; 
-                    text-decoration: none; border-radius: 4px; font-weight: 500;
-                    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);">
-            Decline
-          </a>
-        </div>
-        
-        <!-- Footer -->
-        <div style="margin-top: 30px; font-size: 12px; color: #888888; text-align: center;">
-          <p>This is an automated message. Please do not reply directly to this email.</p>
-          <p>– ODCSE Support</p>
-        </div>
-      </div>
-    </div>
-  `
-};
-
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({
-      success: true,
-      message: 'Invitation sent successfully',
-      invitationId: invitation._id
-    });
-
-  } catch (error) {
-    console.error('Error in send-invitation:', {
-      message: error.message,
-      stack: error.stack,
-      requestBody: req.body
-    });
-    
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process invitation',
-      error: process.env.NODE_ENV === 'development' ? {
-        message: error.message,
-        stack: error.stack
-      } : undefined
-    });
-  }
-});
-
-// In your backend routes (e.g., routes/auth.js)
-router.get('/respond-invitation', async (req, res) => {
-  try {
-    const { token, response } = req.query;
-    
-    if (!token || !response || !['accept', 'decline'].includes(response)) {
-      return res.redirect(`${frontendUrl}/invitation-response?error=invalid_params`);
-    }
-
-    const invitation = await Invitation.findById(token);
-    if (!invitation) {
-      return res.redirect(`${frontendUrl}/invitation-response?error=not_found`);
-    }
-
-    if (invitation.status !== 'pending') {
-      return res.redirect(`${frontendUrl}/invitation-response?error=already_responded`);
-    }
-
-    // Get student details to include in the response
-    const student = await User.findOne({ registerNumber: invitation.registerNumber })
-      .select('name semester section attendancePercentage')
-      .lean();
-
-    invitation.status = response === 'accept' ? 'accepted' : 'declined';
-    invitation.respondedAt = new Date();
-    await invitation.save();
-
-    try {
-      await sendResponseNotificationEmail({
-        ...invitation.toObject(),
-        name: student?.name,
-        semester: student?.semester,
-        section: student?.section,
-        attendancePercentage: student?.attendancePercentage
-      });
-    } catch (emailError) {
-      console.error('Email sending failed:', emailError);
-    }
-
-    res.redirect(`${frontendUrl}/invitation-response?success=true&response=${response}`);
-  } catch (error) {
-    console.error('Error in respond-invitation:', error);
-    res.redirect(`${frontendUrl}/invitation-response?error=server_error`);
-  }
-});
-
-// Check invitation statuses with tutor verification
-// Check invitation statuses with tutor verification
-router.get('/check-invitations', authenticate, async (req, res) => {
-  try {
-    const userEmail = req.user.email;
-    
-    const invitations = await Invitation.find({
-      $or: [
-        { requesterEmail: userEmail },
-        { recipientEmail: userEmail }
-      ],
-      status: { $in: ['pending', 'accepted', 'declined'] }
-    })
-    .sort({ createdAt: -1 })
-    .lean();
-
-    // Get student details for each invitation
-    const invitationsWithDetails = await Promise.all(invitations.map(async inv => {
-      const student = await User.findOne({ registerNumber: inv.registerNumber })
-        .select('name semester section attendancePercentage')
-        .lean();
-      
-      return {
-        ...inv,
-        name: student?.name || inv.name || '',
-        semester: student?.semester || inv.semester || '',
-        section: student?.section || '',
-        attendancePercentage: student?.attendancePercentage || ''
-      };
-    }));
-
-    res.status(200).json({
-      success: true,
-      invitations: invitationsWithDetails
-    });
-  } catch (error) {
-    console.error('Error checking invitations:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check invitations'
-    });
-  }
-});
-
-// Cancel invitation route
-router.delete('/cancel-invitation/:id', authenticate, async (req, res) => {
-  try {
-    const invitation = await Invitation.findByIdAndDelete(req.params.id);
-    
-    if (!invitation) {
-      return res.status(404).json({
-        success: false,
-        message: "Invitation not found"
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Invitation cancelled successfully"
-    });
-
-  } catch (error) {
-    console.error("Error cancelling invitation:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to cancel invitation"
-    });
-  }
-});
-
-
-router.get('/current-user', async (req, res) => {
-  try {
-    // Verify authorization header
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ message: 'Authorization required' });
-    }
-
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userEmail = req.query.email || decoded.email;
-
-    const user = await User.findOne({ email: userEmail })
-      .select('-password')
-      .lean();
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Verify the requested email matches token (if provided)
-    if (req.query.email && req.query.email !== decoded.email) {
-      return res.status(403).json({ message: 'Unauthorized access' });
-    }
-
-    res.json(user);
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ message: 'Invalid token' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
 // ✅ API to update the tutor name
 router.put("/update-tutor", async (req, res) => {
@@ -1636,6 +1665,414 @@ router.put("/update-tutor", async (req, res) => {
   } catch (error) {
     console.error("Error updating tutor:", error);
     res.status(500).send("Failed to update tutor name");
+  }
+});
+
+// ✅ Submit OD Request
+router.post("/od/submit", authenticate, upload.array('documents', 3), async (req, res) => {
+  try {
+    const {
+      eventName,
+      fromDate,
+      toDate,
+      numberOfDays,
+      venue,
+      students // This comes as a JSON string
+    } = req.body;
+
+    // Parse the students string into an array
+    const studentsArray = typeof students === 'string' ? JSON.parse(students) : students;
+
+    // Validate required fields
+    if (!eventName || !fromDate || !toDate || !numberOfDays || !venue || !studentsArray || studentsArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "All required fields must be provided"
+      });
+    }
+
+    // Get current user (requester)
+    const requester = await User.findOne({ email: req.user.email });
+    if (!requester) {
+      return res.status(404).json({
+        success: false,
+        message: "Requester not found"
+      });
+    }
+
+    // Get tutor details
+    const tutor = await Staff.findOne({ name: requester.tutorName });
+    if (!tutor) {
+      return res.status(404).json({
+        success: false,
+        message: "Tutor not found"
+      });
+    }
+
+    // Process uploaded documents
+    const documents = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const result = await cloudinary.uploader.upload(file.path, {
+          folder: 'od-documents',
+          resource_type: 'auto'
+        });
+        documents.push({
+          name: file.originalname,
+          url: result.secure_url,
+          type: file.mimetype
+        });
+        // Delete temp file
+        fs.unlinkSync(file.path);
+      }
+    }
+
+    // Create participants array
+    const participants = studentsArray.map(student => ({
+      registerNumber: student.registerNumber,
+      name: student.name,
+      semester: student.semester,
+      section: student.section || '',
+      attendancePercentage: student.attendancePercentage || 0,
+      status: student.isRequester ? "accepted" : student.status || "pending",
+      invitationId: student.invitationId || null
+    }));
+
+    // Create new OD request
+    const newRequest = new OdRequest({
+      requestId: generateRequestId(),
+      eventName,
+      fromDate: new Date(fromDate),
+      toDate: new Date(toDate),
+      numberOfDays,
+      venue,
+      status: "pending",
+      requester: {
+        registerNumber: requester.registerNumber,
+        name: requester.name,
+        email: requester.email,
+        semester: requester.semester,
+        section: requester.section,
+        attendancePercentage: requester.attendancePercentage
+      },
+      tutor: {
+        name: tutor.name,
+        email: tutor.email,
+        staffId: tutor.staffID
+      },
+      participants,
+      supportingDocuments: documents
+    });
+
+    // Save the request
+    const savedRequest = await newRequest.save();
+
+    // Send email notification to tutor
+    const mailOptions = {
+      from: `"OD System" <${process.env.EMAIL_USER}>`,
+      to: tutor.email,
+      subject: `New OD Request from ${requester.name}`,
+      html: `
+        <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
+          <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: left;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 100px;">
+            </div>
+            <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 20px; text-align: center;">New OD Request</h2>
+            <p style="font-size: 15px; color: #333333; margin-bottom: 15px;">
+              You have received a new OD request from <strong>${requester.name}</strong> (${requester.registerNumber}) for the event:
+            </p>
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-size: 14px; color: #000000;">
+              <p style="margin-top: 0; font-weight: 600;">Event Details:</p>
+              <ul style="margin-bottom: 0; padding-left: 20px;">
+                <li style="margin-bottom: 5px;">Event: ${eventName}</li>
+                <li style="margin-bottom: 5px;">Dates: ${new Date(fromDate).toLocaleDateString()} - ${new Date(toDate).toLocaleDateString()}</li>
+                <li style="margin-bottom: 5px;">Venue: ${venue}</li>
+                <li>Number of Days: ${numberOfDays}</li>
+              </ul>
+            </div>
+            <div style="text-align: center; margin-top: 25px;">
+              <a href="${process.env.FRONTEND_URL}" style="display: inline-block; padding: 12px 25px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px; font-weight: 500; box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);">
+                View Request
+              </a>
+            </div>
+            <div style="margin-top: 30px; font-size: 12px; color: #888888; text-align: center;">
+              <p>This is an automated message. Please do not reply directly to this email.</p>
+              <p>– ODCSE Support</p>
+            </div>
+          </div>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    // Update invitation statuses for participants
+    await Invitation.updateMany(
+      { 
+        _id: { $in: participants.filter(p => p.invitationId).map(p => p.invitationId) }
+      },
+      { $set: { status: "submitted" } }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "OD request submitted successfully",
+      request: savedRequest
+    });
+
+  } catch (error) {
+    console.error("Error submitting OD request:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit OD request",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+});
+
+// ✅ Get OD Requests for Student
+// ✅ Get OD Requests for Student
+router.get("/od/student-requests", authenticate, async (req, res) => {
+  try {
+    const requests = await OdRequest.find({ "requester.email": req.user.email })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error("Error fetching student OD requests:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch OD requests"
+    });
+  }
+});
+
+// ✅ Get OD Requests for Tutor
+router.get("/od/tutor-requests", authenticate, async (req, res) => {
+  try {
+    // First check if the user is a staff member
+    const staff = await Staff.findOne({ email: req.user.email });
+    if (!staff) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Tutor privileges required."
+      });
+    }
+
+    const requests = await OdRequest.find({ "tutor.email": req.user.email })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error("Error fetching tutor OD requests:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch OD requests"
+    });
+  }
+});
+
+// ✅ Get Single OD Request
+router.get("/od/request/:id", authenticate, async (req, res) => {
+  try {
+    const request = await OdRequest.findOne({ 
+      $or: [
+        { _id: req.params.id },
+        { requestId: req.params.id }
+      ]
+    }).lean();
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "OD request not found"
+      });
+    }
+
+    // Check if user is authorized to view this request
+    const isRequester = request.requester.email === req.user.email;
+    const isTutor = request.tutor.email === req.user.email;
+    const isAdmin = req.user.role === "admin";
+    
+    if (!isRequester && !isTutor && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized to view this request"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      request
+    });
+  } catch (error) {
+    console.error("Error fetching OD request:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch OD request"
+    });
+  }
+});
+
+// ✅ Update OD Request Status (Approve/Reject)
+router.put("/od/request/:id/status", authenticate, upload.single('signature'), async (req, res) => {
+  try {
+    const { status, comments } = req.body;
+    const requestId = req.params.id;
+
+    if (req.query.processing === 'true') {
+      return res.status(202).json({
+        success: true,
+        isProcessing: true,
+        message: "Processing request..."
+      });
+    }
+
+    if (!status || !["approved", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value"
+      });
+    }
+
+    // Check if user is a tutor
+    const tutor = await Staff.findOne({ email: req.user.email });
+    if (!tutor) {
+      return res.status(403).json({
+        success: false,
+        message: "Only tutors can approve/reject requests"
+      });
+    }
+
+    // Find the request
+    const request = await OdRequest.findOne({
+      $or: [
+        { _id: requestId },
+        { requestId: requestId }
+      ]
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "OD request not found"
+      });
+    }
+
+    // Verify the tutor is the assigned tutor
+    if (request.tutor.email !== req.user.email) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not the assigned tutor for this request"
+      });
+    }
+
+    // Handle signature upload if provided
+    let signatureUrl = null;
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: 'od-signatures'
+      });
+      signatureUrl = result.secure_url;
+      // Delete temp file
+      fs.unlinkSync(req.file.path);
+    }
+
+    // Update request status
+    request.status = status;
+    request.decision = {
+      by: tutor.name,
+      at: new Date(),
+      comments: comments || "",
+      signatureUrl: signatureUrl || request.decision?.signatureUrl
+    };
+    request.updatedAt = new Date();
+
+    const updatedRequest = await request.save();
+
+    // Send email notification to requester
+    const mailOptions = {
+      from: `"OD System" <${process.env.EMAIL_USER}>`,
+      to: request.requester.email,
+      subject: `Your OD Request has been ${status}`,
+      html: `
+        <div style="font-family: 'Poppins', Arial, sans-serif; background-color: #f5f5f5; padding: 40px; text-align: center;">
+          <div style="max-width: 450px; background-color: #ffffff; margin: auto; padding: 30px; border-radius: 6px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); text-align: left;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <img src="https://i.imgur.com/ic2FQIc.png" alt="ODCSE Logo" style="max-width: 100px;">
+            </div>
+            <h2 style="color: #000000; font-size: 22px; font-weight: 600; margin-bottom: 20px; text-align: center;">
+              OD Request ${status === "approved" ? "Approved" : "Rejected"}
+            </h2>
+            <p style="font-size: 15px; color: #333333; margin-bottom: 15px;">
+              Your OD request for <strong>${request.eventName}</strong> has been <strong style="color: ${status === "approved" ? "#4CAF50" : "#f44336"}">${status}</strong> by ${tutor.name}.
+            </p>
+            <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-size: 14px; color: #000000;">
+              <p style="margin-top: 0; font-weight: 600;">Request Details:</p>
+              <ul style="margin-bottom: 0; padding-left: 20px;">
+                <li style="margin-bottom: 5px;">Event: ${request.eventName}</li>
+                <li style="margin-bottom: 5px;">Dates: ${new Date(request.fromDate).toLocaleDateString()} - ${new Date(request.toDate).toLocaleDateString()}</li>
+                <li style="margin-bottom: 5px;">Status: <span style="color: ${status === "approved" ? "#4CAF50" : "#f44336"}">${status}</span></li>
+                ${comments ? `<li style="margin-bottom: 5px;">Comments: ${comments}</li>` : ""}
+              </ul>
+            </div>
+            <div style="margin-top: 30px; font-size: 12px; color: #888888; text-align: center;">
+              <p>This is an automated message. Please do not reply directly to this email.</p>
+              <p>– ODCSE Support</p>
+            </div>
+          </div>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({
+      success: true,
+      isProcessing: false,  // Explicitly set to false when done
+      message: `OD request ${status} successfully`,
+      request: updatedRequest
+    });
+
+  } catch (error) {
+    console.error("Error updating OD request status:", error);
+    res.status(500).json({
+      success: false,
+      isProcessing: false,
+      message: "Failed to update OD request status"
+    });
+  }
+});
+
+// In your backend routes
+router.get('/get-staff-signature', authenticate, async (req, res) => {
+  try {
+    const { name } = req.query;
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Staff name is required' });
+    }
+
+    const staff = await Staff.findOne({ name: new RegExp(name, 'i') });
+    if (!staff || !staff.signature?.url) {
+      return res.status(404).json({ success: false, message: 'Staff signature not found' });
+    }
+
+    res.json({ 
+      success: true, 
+      signatureUrl: staff.signature.url 
+    });
+  } catch (error) {
+    console.error('Error fetching staff signature:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
